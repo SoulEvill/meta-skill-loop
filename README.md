@@ -71,13 +71,9 @@ msl diff <name> [--refinements]                     msl nudge <name>       msl r
 - **Feedback entries** are one file each, with frontmatter: `skill_hash` (which version it was about), `tool`, `project`, `origin` (explicit/observed), `confidence`, `severity` (nit/annoying/wrong), and `status` (candidate/open/applied/declined/resolved-upstream).
 - **Privacy.** Feedback can contain work details. The workspace is local; never push it anywhere public.
 
-## Roadmap
+## Roadmap and design
 
-- **v1 (now):** install for Cursor/Codex/Claude Code; add/scan; explicit feedback; status; refine with approval.
-- **v2:** survive updates: three-way merge of your refinements onto a new upstream version; `contribute` a refinement back to the skill's source as a PR with redacted evidence.
-- **v3:** learn automatically: observers that write `observed` candidates (session review, correction detection, tool hooks where available), plus triage.
-
-See [docs/design.md](docs/design.md) for the full design and prior art.
+Design, roadmap, and the latest session handoff live in [`docs/`](docs/): [design.md](docs/design.md) and [handoff.md](docs/handoff.md). The code is the source of truth; the docs may lag behind it.
 
 ## Develop
 
