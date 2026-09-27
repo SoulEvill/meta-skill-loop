@@ -463,7 +463,9 @@ cmd_log() {
 
 cmd_mark() { # fb-id status [-m note]
   local id="${1:-}" status="${2:-}" note="" file
-  [ -n "$id" ] && [ -n "$status" ] || die "usage: msl mark <fb-id> open|declined|applied|resolved-upstream|candidate [-m note]"
+  if [ -z "$id" ] || [ -z "$status" ]; then
+    die "usage: msl mark <fb-id> open|declined|applied|resolved-upstream|candidate [-m note]"
+  fi
   shift 2
   while [ $# -gt 0 ]; do
     case "$1" in -m) note="${2:?}"; shift ;; *) die "mark: unknown option $1" ;; esac
