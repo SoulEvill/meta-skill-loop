@@ -6,7 +6,7 @@ _Last updated: 2026-09-28, after packaging and CI._
 
 ## Where things stand
 
-- **v1.1 is built** on branch `claude/inspiring-ritchie-n204ga`, not merged to `main` yet. 99 end-to-end tests, run in CI on Ubuntu and on macOS bash 3.2.
+- **v1.1 is built** on branch `claude/inspiring-ritchie-n204ga`, not merged to `main` yet. 97 end-to-end tests plus the skills lint and a real `skills` CLI install, all in CI on Ubuntu and macOS (bash 3.2).
   - Each managed skill has its own git repo in the workspace, whose working tree is the live skill folder. It has two branches: `upstream` (as published) and `mine` (what runs).
   - Commands: `keep`, `undo`/`redo`, `history`, `rollback` (to a version, or `--only` one), and review-gated `update` (`--check`, `--apply`, `--abort`, `--take-upstream`).
   - `diff` variants: between versions, `--upstream`, `--incoming`, `--merge`, `--saved`.
