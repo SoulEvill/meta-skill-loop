@@ -111,6 +111,15 @@ mkdir -p "$HOME/.cursor/skills/grill-me/references"
 echo "extra" > "$HOME/.cursor/skills/grill-me/references/new.md"
 $MSL undo grill-me >/dev/null
 check "undo removes new files too" test ! -e "$HOME/.cursor/skills/grill-me/references/new.md"
+echo "Try this edit." >> "$HOME/.cursor/skills/grill-me/SKILL.md"
+$MSL diff grill-me >/dev/null
+$MSL git grill-me show mine:SKILL.md > "$HOME/x" && mv "$HOME/x" "$HOME/.cursor/skills/grill-me/SKILL.md"
+has "edits wiped by a reinstall are reported" "$($MSL status grill-me)" "your last live edits"
+has "diff --saved previews what redo brings back" "$($MSL diff grill-me --saved)" "+Try this edit."
+$MSL redo grill-me >/dev/null
+has "redo recovers wiped edits" "$(cat "$HOME/.cursor/skills/grill-me/SKILL.md")" "Try this edit."
+$MSL undo grill-me >/dev/null
+lacks "discarded edits are not reported as lost" "$($MSL status grill-me)" "your last live edits"
 
 echo "history and rollback"
 out="$($MSL history grill-me)"
@@ -131,6 +140,14 @@ if printf '%s' "$out" | grep -q "Line B." && ! printf '%s' "$out" | grep -q "(A)
 echo "dirty" >> "$HOME/.cursor/skills/grill-me/SKILL.md"
 check "rollback refuses with uncommitted edits" sh -c "! $MSL rollback grill-me v1"
 $MSL undo grill-me >/dev/null
+printf -- '- z\n' | $MSL feedback add grill-me >/dev/null
+sed 's/^Ask hard questions.$/Ask hard, specific questions./' "$HOME/.cursor/skills/grill-me/SKILL.md" > "$HOME/x" && mv "$HOME/x" "$HOME/.cursor/skills/grill-me/SKILL.md"
+$MSL keep grill-me -m "late fix" >/dev/null
+lv="$(version_of grill-me)"
+lf="$HOME/.meta-skill-loop/skills/grill-me/feedback/$(fb 004).md"
+$MSL feedback mark "$(fb 004)" applied -m "$lv" >/dev/null
+$MSL rollback grill-me "$lv" --only >/dev/null
+check "rollback also reopens feedback linked after the keep" grep -q '^status: open' "$lf"
 
 echo "copies"
 skill "$HOME/.agents/skills/multi" multi
@@ -197,6 +214,16 @@ skill "$HOME/.agents/skills/plain" plain "v two"
 lock plain 222222222222
 has "update without refinements applies directly" "$($MSL update plain --no-fetch)" "you had no refinements to merge"
 has "fast-forwarded content is live" "$(cat "$HOME/.agents/skills/plain/SKILL.md")" "v two"
+skill "$HOME/.agents/skills/plain" plain "v two and a half"
+lock plain 252525252525
+has "update --check reports without applying" "$($MSL update plain --no-fetch --check)" "Nothing was changed"
+has "check leaves your version live" "$(cat "$HOME/.agents/skills/plain/SKILL.md")" "v two"
+lacks "check does not apply upstream" "$(cat "$HOME/.agents/skills/plain/SKILL.md")" "half"
+has "diff --incoming shows what upstream changed" "$($MSL diff plain --incoming)" "+v two and a half"
+skill "$HOME/.agents/skills/plain" plain "v three"
+lock plain 333333333333
+has "a second update without refinements also applies directly" "$($MSL update plain --no-fetch)" "you had no refinements to merge"
+has "second fast-forward is live" "$(cat "$HOME/.agents/skills/plain/SKILL.md")" "v three"
 check "own skills have no upstream" sh -c "! $MSL update grill-me"
 
 echo "skill inside a git repo"
@@ -242,7 +269,7 @@ check "remove leaves the skill untouched" test "$(cat "$HOME/.agents/skills/tmp-
 check "remove archives the data" sh -c "ls '$HOME/.meta-skill-loop/archive' | grep -q tmp-skill"
 check "remove stops managing it" sh -c "! $MSL status tmp-skill"
 printf -- '- y\n' | $MSL feedback add grill-me >/dev/null
-check "feedback ids keep increasing" test -f "$HOME/.meta-skill-loop/skills/grill-me/feedback/$(fb 004).md"
+check "feedback ids keep increasing" test -f "$HOME/.meta-skill-loop/skills/grill-me/feedback/$(fb 005).md"
 legacy="$(mktemp -d)"
 mkdir -p "$legacy/.git"
 check "an old unreleased workspace is refused with instructions" sh -c "MSL_HOME='$legacy' $MSL status 2>&1 | grep -q 'older, unreleased build'"

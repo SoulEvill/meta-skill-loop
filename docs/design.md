@@ -115,12 +115,13 @@ One file per entry means no append races between concurrent sessions, and easy d
 - **Add.** Find every installed copy with that name; the first is primary, the others are mirrors kept in sync. Detect the kind. Create the git dir and commit the folder as `v1` (with `Upstream-Rev` and an `upstream` branch if it has one). **The skill file is not modified.**
 - **Capture.** Identify the skill, add it if needed, write asked/observed/expected/user-said/evidence (trimmed, with no secrets), then `msl feedback add`. It never edits the skill. The agent offers capture after a correction because of one line the user adds once to their tool's own rules (installer prints it). meta-skill-loop no longer inserts anything into skills.
 - **Refine.** Status must be clean. The agent reads the open feedback, writes a brief (themes, then desired behavior), and proposes the smallest edit. A skill-creator tool can draft it. After approval, the edit is applied to the live folder. Then either keep it (`msl keep --fixes …` makes the next version and marks entries applied) or try it first (saved automatically; later keep, or `undo`/`redo`).
-- **History and rollback.** `msl history` lists versions with fixes, the upstream revision, and feedback counted per version. `msl rollback <v>` restores that version as a new version and reopens the feedback that the undone versions fixed. It warns (and needs `--yes`) when that crosses an upstream merge. `--only` reverts a single version.
+- **History and rollback.** `msl history` lists versions with fixes, the upstream revision, and feedback counted per version. `msl rollback <v>` restores that version as a new version and reopens the feedback that the undone versions fixed (by `Fixes:` trailer or by `resolution: vN`). It warns (and needs `--yes`) when that crosses an upstream merge. `--only` reverts a single version.
 - **Update.** `msl update <name>`:
   1. Bring in the new upstream. For `skills-cli`, it runs `npx skills update`. For `git`, the user pulls as usual.
   2. Record it on `upstream`, then put `mine` back in the live folder, so the user's version stays live.
   3. If there are no refinements, fast-forward as the next version. Otherwise merge in a temporary worktree (`merge/`) for review: `msl diff --merge` and `--upstream`. The agent resolves conflicts by intent, then `--apply`, `--abort`, or `--take-upstream`.
-  If an installer runs directly instead, status shows `upstream-update` and the same flow picks it up.
+  If an installer runs directly instead, status shows `upstream-update` and the same flow picks it up. `--check` stops after step 2 and only reports, and `msl diff --incoming` shows what the new upstream changes.
+- **Lost live edits.** If an update or reinstall overwrites edits that were being tried out (not kept yet), status says so: they're in the stash. `msl diff --saved` previews them, and `msl redo` restores them. The index is always left on `mine`, so a later `redo` applies cleanly.
 
 ## 7. Decisions and accepted limits (2026-09-28)
 

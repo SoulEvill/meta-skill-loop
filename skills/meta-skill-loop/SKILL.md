@@ -21,9 +21,11 @@ All bookkeeping goes through one script, `msl`. Run it as `~/.meta-skill-loop/bi
 Run `~/.meta-skill-loop/bin/msl status` and summarize it in a few lines. It shows each skill's version (`v3*` means v3 plus live edits), open feedback, and state, and it prints a note for anything needing attention:
 - **Open feedback:** name the skills with the most; suggest "refine <skill>" when one has 2+ open entries.
 - **TRIAGE > 0:** automatically observed candidates to confirm or dismiss (see Triage below).
-- **`changed`:** live edits that aren't a version yet. Show `msl diff <name>`; ask whether to keep them (`msl keep <name> -m "<what changed>"`) or undo them (`msl undo <name>`).
+- **`changed`:** live edits that aren't a version yet. Show `msl diff <name>`; ask whether to keep them (`msl keep <name> -m "<what changed>"`) or undo them (`msl undo <name>`). Before keeping, check `msl feedback list <name>`: if the edits address open entries, confirm with the user and add `--fixes fb-…,fb-…` so those entries are marked applied. (If a version was already kept without it, `msl feedback mark <id> applied -m v2` links it afterwards.)
 - **`upstream-update`:** someone ran the skill's installer or `git pull`, and a new upstream version replaced the user's version in the folder. The user's version is safe. Offer to review the update (see Updates).
 - **`upstream-live`:** an older upstream version was put back (for example, a reinstall), so the user's refinements aren't live. `msl update <name>` restores them.
+- **"your last live edits … are no longer in the folder":** something (usually an update or reinstall) overwrote edits the user was trying out before they kept them. They're saved. Show them with `msl diff <name> --saved`, and offer `msl redo <name>`, then keep or undo as usual.
+- **"upstream … is recorded but not merged":** a newer upstream version is known but isn't in the user's version yet (they chose "not now" earlier, or it arrived with a reinstall). Offer to review it (see Updates).
 - **`copies-differ`:** the skill is installed in several tool folders and they no longer match. `msl keep <name> -m "sync copies"` copies the primary one over the others.
 - **`missing`:** the folder is gone. Offer `msl remove <name>`.
 - **Unmanaged skills:** if any exist, mention how many and offer to add them.
@@ -64,7 +66,11 @@ Offer to add it to the Codex or Claude Code file for them. Cursor's user rules a
    - **Go back to a version entirely:** `msl rollback <name> v2`. If it says this also brings back older upstream text, tell the user, and only rerun with `--yes` if they agree.
 3. A rollback is itself a new version. The feedback that the undone versions fixed is reopened.
 
-### Updates: "update grilling", or when status shows `upstream-update`
+### Updates: "is there an update for grilling?", "update grilling", or when status shows `upstream-update`
+
+**Just checking:** `msl update <name> --check` fetches and records the latest upstream but changes nothing live. If something new is available, `msl diff <name> --incoming` shows what upstream changed. Summarize it and ask whether to take it.
+
+**Taking it:**
 
 1. Run `msl update <name>`:
    - For a `skills-cli` skill it fetches the latest version first.

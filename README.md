@@ -52,6 +52,7 @@ Talk to your agent:
 | "keep it" / "undo that" | the edit becomes the next version, or is discarded (and can be redone) |
 | "show versions of grill-me" / "compare v2 and v4" | history with the feedback each version fixed and received |
 | "grill-me got worse, undo v4" / "go back to v2" | rollback, as a new version; the feedback those versions fixed is reopened |
+| "is there an update for grilling?" | checks and shows what upstream changed; nothing changes |
 | "update grilling" | fetches the new upstream version and merges it with your changes for review; your version stays live until you approve |
 | "meta-skill-loop status" | versions, open feedback, and anything needing attention |
 
@@ -68,9 +69,9 @@ Talk to your agent:
 ```
 msl status [name]                 msl scan                    msl add <name|path>        msl remove <name>
 msl feedback add <name> < body    msl feedback list <name>    msl feedback mark <id> <status>
-msl diff <name> [vA [vB] | --upstream | --merge]              msl history <name>
-msl keep <name> -m <summary> [--fixes ids]                    msl undo <name>            msl redo <name>
-msl rollback <name> <vN> [--only]                             msl update <name> [--apply | --abort | --take-upstream]
+msl diff <name> [vA [vB] | --upstream | --incoming | --merge | --saved]      msl history <name>
+msl keep <name> -m <summary> [--fixes ids]          msl undo <name>            msl redo <name>
+msl rollback <name> <vN> [--only]                   msl update <name> [--check | --apply | --abort | --take-upstream]
 ```
 
 ## How it thinks about skills

@@ -2,59 +2,60 @@
 
 Rewritten at the end of every working session, so the next session (human or agent, local or cloud) can pick up. It's a snapshot, not a history. For the design, see [design.md](design.md). The code is the source of truth.
 
-_Last updated: 2026-09-28, at the end of the design and v1 session._
+_Last updated: 2026-09-28, end of the v1.1 build session._
 
 ## Where things stand
 
-- **v1 is built** on branch `claude/inspiring-ritchie-n204ga`, not merged to `main` yet. CI is green on Ubuntu and on macOS bash 3.2, with 56 end-to-end tests.
-  - `msl`: scan, add, log, status, show, diff, nudge, commit, mark, set, remove.
-  - Three skills: `meta-skill-loop`, `meta-skill-feedback`, `meta-skill-refine`.
-  - `install.sh`, which copies skills into `~/.agents/skills` (Cursor and Codex), plus `--claude`.
-- **It was tested end to end with real skills** installed by the `skills` CLI (`mattpocock/skills`: grill-me, grilling, code-review), plus one local skill. Simulated Cursor agents drove the test.
-  - It worked: adding skills (ownership detected from the lock file); unprompted capture after a natural correction; a refine proposing and then applying after approval; the refined skill behaving differently in a fresh session; a reinstall detected as `reverted`, then recovered.
-  - It found a gap: there was no way to get the exact text of a lost change. That was fixed with `msl diff` and `msl nudge`.
-- **Not yet tested in real Cursor or Codex:**
-  - whether skills trigger from their descriptions alone;
-  - Cursor's approval prompt when a skill writes to `~/.meta-skill-loop`;
+- **v1.1 is built** on branch `claude/inspiring-ritchie-n204ga`, not merged to `main` yet. 99 end-to-end tests, run in CI on Ubuntu and on macOS bash 3.2.
+  - Each managed skill has its own git repo in the workspace, whose working tree is the live skill folder. It has two branches: `upstream` (as published) and `mine` (what runs).
+  - Commands: `keep`, `undo`/`redo`, `history`, `rollback` (to a version, or `--only` one), and review-gated `update` (`--check`, `--apply`, `--abort`, `--take-upstream`).
+  - `diff` variants: between versions, `--upstream`, `--incoming`, `--merge`, `--saved`.
+  - Feedback ids look like `fb-<workspace id>-NNN` and record the version they were about.
+  - `add` no longer edits skills. The installer prints one rule for the tool's own settings instead.
+- **Tested end to end with real skills.** The installs used the `skills` CLI: `mattpocock/skills` grilling, plus a local skill. Three simulated Cursor sessions acted as the agent, and a real `npx skills add`/`update` ran against the workspace. What worked:
+  - Add with the kind detected, and skill files byte-identical afterwards.
+  - The user rule alone produced the offer to log feedback.
+  - The feedback entry recorded the version it was about.
+  - Refine: brief, approved edit, "try it first".
+  - A real reinstall wiped the trial; status reported it, and redo recovered it.
+  - Keep made v2, and history showed it.
+  - `update` fetched with the real CLI and reported it up to date.
+  - meta-skill-loop's own update through `install.sh` applied directly.
+- **Bugs this testing found, all fixed:**
+  - the index was left staged after an autosave, so `redo` silently did nothing;
+  - status notes were joined on one line;
+  - a second framework update was wrongly sent to review;
+  - rollback only reopened feedback that was linked at keep time;
+  - there was no read-only update check;
+  - there was no preview of saved edits.
+- **Still untested in real Cursor or Codex:**
+  - skills triggering from their descriptions alone;
+  - Cursor's approval prompt for writes to `~/.meta-skill-loop`;
   - Codex's writable-roots setting.
 
-## Decided (details in design.md §7)
+## Decided (details in design.md §5–7)
 
-- **Framework and workspace are separate.** The public repo holds code only. Each user's data lives in their own local `~/.meta-skill-loop`. Nothing is pushed anywhere automatically, and never to a skill's maintainer.
-- **Versioning:** one git repo per managed skill, with branches `upstream` (pristine) and `mine` (what runs). The live folder is the working tree.
-  - Versions `v1…` are created only on "keep it" (commit).
-  - Trials are protected with `git stash`.
-  - Rollback either reverts one version or restores one.
-  - Reconciling is a merge in a temporary worktree: the LLM proposes and the human approves.
-- **Command renames:** `log` becomes `feedback`, and versions are named `vN` instead of `ch-NNNN`.
-- **Feedback ids:** `fb-<workspace id>-<seq>`.
-- **Updates:** an installer run directly makes upstream live immediately. It's detected on the next `msl` call, which offers reconcile / restore mine / take upstream. The recommended path is `meta-skill-loop update X`, which reviews before going live.
-- **Accepted limits:**
-  - merging prose is fuzzy;
-  - a trial affects every session at once;
-  - there's no detection when a skill is used, because that isn't possible portably.
-- **Team feedback layer:** designed for (opt-in shared repo), not built.
-- **Docs** live in `docs/` in this repo: `design.md`, and this `handoff.md`. GitHub Wiki was rejected because cloud sessions can't push to wikis ([anthropics/claude-code#86787](https://github.com/anthropics/claude-code/issues/86787), closed as not planned).
+- Skills stay in place; there's no central store. meta-skill-loop never edits a skill except to apply an approved change.
+- Versions are git commits on `mine`. They're created only by keep, a rollback, or a taken or merged update.
+- Updates: run directly by an installer, they go live immediately and are detected on the next `msl` call. Run through `msl update`, they're reviewed first.
+- Refine can hand its brief to the user's skill-creator. meta-skill-loop is the container for feedback and versions.
+- Team feedback layer and multi-machine sync: designed for, not built.
+- Docs live in `docs/`. The Wiki was rejected because cloud sessions can't push to wikis (anthropics/claude-code#86787).
 
-## Open question for the user
+## Open questions
 
-Keep skills **in place** (A, recommended) or **move them into a central store** and deploy copies to tool folders (B)?
-- B's review-before-update benefit is available in A through `meta-skill-loop update`.
-- B adds a second copy of every skill, a deploy step, and an "edited the wrong copy, it got overwritten" failure mode.
-- B can't move skills that live in team repos.
+None blocking. Candidates for later:
+- `contribute` (v2): a refinement becomes a PR to the skill's source.
+- Automatic observers (v3).
 
-## Next steps (once A or B is confirmed)
+## Next steps
 
-1. Build design.md §7 (v1.1):
-   - per-skill git repos and a migration from the v1 layout (`base/`, `current/`, `changes.md`);
-   - `feedback`, `commit`, `restore`, `history`, `rollback`, `update`;
-   - stash-protected trials;
-   - automatic update detection on every `msl` call;
-   - the new ids.
-2. Update the three skills' instructions for the new flow. Rerun the real-skill test with a real `npx skills update`.
-3. The user tries it in Cursor. Then open the PR from the branch to `main`.
+1. The user tries v1.1 in Cursor on their own skills: install, add, feedback, refine, keep, update.
+2. Fix what that turns up, then open the PR from the branch to `main`.
+3. Then plan v2 (`contribute`).
 
 ## Notes for the next agent
 
-- In this cloud environment, running a headless `claude -p` with permission checks skipped is blocked. Use role-playing subagents to simulate Cursor instead.
-- Bash 3.2 can be built locally for testing; see `AGENTS.md` for the compatibility rules.
+- In this cloud environment, headless `claude -p` with permission checks skipped is blocked. Simulate Cursor with role-playing subagents instead: give them the skill list and the user's rule, and relay user turns one at a time.
+- Bash 3.2 can be built from source for local testing; see `AGENTS.md` for the compatibility rules.
+- Two tests failed only because two edits touched adjacent lines, which git merge correctly treats as a conflict. Keep test edits on separate lines.

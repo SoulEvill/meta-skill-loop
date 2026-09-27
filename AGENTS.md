@@ -5,7 +5,7 @@ This repo is the public source of meta-skill-loop: three agent skills plus `msl`
 ## Layout
 
 - `skills/<name>/SKILL.md`: the skills. Frontmatter is **only** `name` and `description`, the subset Cursor, Codex, and Claude Code all honor. No tool-specific syntax (no `!command` injection, no `${CLAUDE_*}` variables, no hooks).
-- `skills/meta-skill-loop/scripts/msl`: all mechanical work. It ships inside the hub skill so installs via the `skills` CLI carry it; `msl init` copies it to `~/.meta-skill-loop/bin/msl`, the path the skills use.
+- `skills/meta-skill-loop/scripts/msl`: all mechanical work (per-skill git repos in the workspace; see design.md §5). It ships inside the hub skill so installs via the `skills` CLI carry it; `msl init` copies it to `~/.meta-skill-loop/bin/msl`, the path the skills use.
 - `install.sh`: copies skills into tool folders (copy, never symlink: Cursor's symlink discovery is unreliable) and registers them.
 - `tests/run.sh`: end-to-end tests in a throwaway `$HOME`.
 
