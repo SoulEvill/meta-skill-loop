@@ -416,10 +416,39 @@ reopen_feedback() { # note ids...
   done
 }
 
+# ---------------------------------------------------------------- launcher ---
+# ~/.meta-skill-loop/bin/msl is a tiny launcher, not a copy: it runs the msl inside
+# the installed meta-skill-loop skill, so updating the skill (npx skills update,
+# git pull, install.sh) updates msl too. Rewritten whenever it's out of date.
+
+launcher_text() { # hub skill folder
+  cat <<EOF
+#!/bin/sh
+# meta-skill-loop launcher: runs msl from the installed meta-skill-loop skill.
+for d in "$1" "\$HOME/.agents/skills/meta-skill-loop" "\$HOME/.cursor/skills/meta-skill-loop" \\
+         "\$HOME/.claude/skills/meta-skill-loop" "\$HOME/.codex/skills/meta-skill-loop"; do
+  if [ -f "\$d/scripts/msl" ]; then exec "\${MSL_BASH:-bash}" "\$d/scripts/msl" "\$@"; fi
+done
+echo "msl: the meta-skill-loop skill is not installed. Install it: npx skills add SoulEvill/meta-skill-loop" >&2
+exit 1
+EOF
+}
+
+ensure_launcher() {
+  local hub want
+  hub="$(abspath "$(dirname "$0")/..")" || return 0
+  [ -f "$hub/SKILL.md" ] || return 0   # only when running from inside the skill
+  want="$(launcher_text "$hub")"
+  if [ "$(cat "$MSL_HOME/bin/msl" 2>/dev/null || true)" != "$want" ]; then
+    mkdir -p "$MSL_HOME/bin"
+    printf '%s\n' "$want" > "$MSL_HOME/bin/msl"
+    chmod +x "$MSL_HOME/bin/msl"
+  fi
+}
+
 # --------------------------------------------------------------- commands ---
 
 cmd_init() {
-  local self
   if [ -d "$MSL_HOME/.git" ] && [ ! -f "$MSL_HOME/workspace.yaml" ]; then
     die "$(tilde "$MSL_HOME") was created by an older, unreleased build. Move it aside (mv $(tilde "$MSL_HOME") $(tilde "$MSL_HOME").old) and add your skills again."
   fi
@@ -440,11 +469,7 @@ This folder can contain private evidence from your work: never push it anywhere 
     skills/<name>/feedback/          one file per feedback entry
 EOF
   fi
-  self="$(abspath "$(dirname "$0")")/$(basename "$0")"
-  if [ "$self" != "$(abspath "$MSL_HOME/bin")/msl" ]; then
-    cp "$self" "$MSL_HOME/bin/msl"
-    chmod +x "$MSL_HOME/bin/msl"
-  fi
+  ensure_launcher
   printf 'workspace: %s (id %s)\n' "$(tilde "$MSL_HOME")" "$(ws_id)"
 }
 
@@ -476,7 +501,7 @@ cmd_add() {
     esac
     shift
   done
-  [ -n "$target" ] || die "usage: msl add <name|path> [--kind local|skills-cli|git|framework] [--source S] [--rev R]"
+  [ -n "$target" ] || die "usage: msl add <name|path> [--kind local|skills-cli|git] [--source S] [--rev R]"
   ensure_ws
 
   if [ -f "$target/SKILL.md" ]; then
@@ -514,7 +539,7 @@ EOF
       fi
     fi
   fi
-  case "$kind" in local|skills-cli|git|framework) ;; *) die "kind must be local, skills-cli, git, or framework" ;; esac
+  case "$kind" in local|skills-cli|git) ;; *) die "kind must be local, skills-cli, or git" ;; esac
   if [ -z "$source" ]; then
     case "$kind" in
       skills-cli) source="$(lock_info "$name" source)" ;;
@@ -913,7 +938,7 @@ cmd_rollback() { # name vN [--only] [--yes]
 }
 
 # Review-gated upstream update. Stages:
-#   1. bring in the new upstream (skills CLI: run it; git repo / framework: already in place)
+#   1. bring in the new upstream (skills CLI: run it; git repo: already pulled by the user)
 #   2. record it on the upstream branch and put your version back in the live folder
 #   3. no refinements of yours: fast-forward and done. Otherwise merge in a temporary
 #      worktree for review; the live folder stays on your version until --apply.
@@ -1103,7 +1128,7 @@ main() {
     import-upstream|add-path|version|--version|help|-h|--help) ;;
     *) usage >&2; exit 2 ;;
   esac
-  case "$cmd" in init|version|--version|help|-h|--help) ;; *) ensure_ws ;; esac
+  case "$cmd" in init|version|--version|help|-h|--help) ;; *) ensure_ws; ensure_launcher ;; esac
   case "$cmd" in
     init) cmd_init "$@" ;;
     scan) cmd_scan "$@" ;;

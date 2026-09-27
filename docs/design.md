@@ -48,9 +48,9 @@ Hence:
 ```
 ~/.meta-skill-loop/                  local only; can hold private evidence, so never push it publicly
   workspace.yaml                     id: k3x9 (random, created once), used in feedback ids
-  bin/msl
+  bin/msl                            a launcher that runs scripts/msl from the installed meta-skill-loop skill
   skills/<name>/
-    skill.yaml                       name, kind (local|skills-cli|git|framework), source, added, paths (primary first)
+    skill.yaml                       name, kind (local|skills-cli|git), source, added, paths (primary first)
     git/                             the skill's version history (git dir; its working tree is the live skill folder)
     feedback/fb-k3x9-007.md          one file per entry
     merge/                           only while an upstream merge waits for review (a temporary git worktree)
@@ -97,7 +97,6 @@ One file per entry means no append races between concurrent sessions, and easy d
 | `local` | nobody | never: every change is yours |
 | `skills-cli` | `npx skills update` | lock-file revision not yet recorded on `upstream` |
 | `git` | `git pull`, teammates | the last commit touching the folder isn't recorded yet |
-| `framework` | `install.sh` | install records the new version itself |
 
 **States:**
 
@@ -137,6 +136,19 @@ One file per entry means no append races between concurrent sessions, and easy d
   - A team feedback layer: an opt-in shared repo, explicit sharing, and views merging local and team entries. Feedback ids are already unique across workspaces for this.
   - Syncing several machines.
   - A richer review UI than the chat diff.
+
+## 7a. Distribution and releases
+
+- **One package format.** This repo is a standard Agent Skills package: `skills/<name>/SKILL.md`. The primary install is `npx skills add SoulEvill/meta-skill-loop -g --copy`, and `install.sh` is a copy-only fallback for machines without Node. Team and personal skill repos use the same format, so everything installs, updates, and gets managed the same way. meta-skill-loop's own skills are ordinary managed skills: there's no special kind.
+- **Self-contained skills.** `msl` ships inside the `meta-skill-loop` skill. Any of the three skills sets up the workspace on first use (`../meta-skill-loop/scripts/msl init`). `~/.meta-skill-loop/bin/msl` is a launcher into the installed skill, so updating the skill updates `msl`, with no stale copy.
+- **Later channels are thin wrappers.** Plugin marketplaces (Claude Code, Cursor, Codex) all accept a folder of skills, so each would be a small manifest at the repo root pointing at `skills/`. Nothing about the layout has to change.
+- **Versions.** Semver in `MSL_VERSION`. A release is a tag `vX.Y.Z` on a commit already on `main`; the release workflow checks that, reruns every test, and publishes a GitHub Release with generated notes. `main` is always the latest release, and users can pin a tag.
+- **Tests.**
+  - Unit/e2e (`tests/run.sh`, bash 5 and macOS bash 3.2).
+  - Skills lint (`tests/lint-skills.sh`).
+  - A real `skills` CLI install (`tests/package.sh`).
+  - All three run in CI on every push and PR.
+  - Real-agent tests (`tests/agent/run.sh`) check outcomes on disk, so one script covers Claude Code, Cursor, and Codex. They're started manually by the owner, with keys stored in a protected environment.
 
 ## 8. Roadmap
 

@@ -26,6 +26,7 @@ new_home() {
   HOME="$(mktemp -d)"
   export HOME
   unset MSL_HOME
+  export MSL_BASH="$SH"   # the launcher runs msl with the bash under test
   MSL="$SH $HOME/.meta-skill-loop/bin/msl"
   cd "$HOME"
 }
@@ -52,12 +53,10 @@ mkdir -p "$HOME/.claude"
 "$SH" "$REPO/install.sh" --claude >/dev/null
 check "copies core skills to ~/.agents/skills" test -f "$HOME/.agents/skills/meta-skill-feedback/SKILL.md"
 check "copies core skills to ~/.claude/skills" test -f "$HOME/.claude/skills/meta-skill-refine/SKILL.md"
-check "installs msl into the workspace" test -x "$HOME/.meta-skill-loop/bin/msl"
+check "installs the msl launcher" test -x "$HOME/.meta-skill-loop/bin/msl"
+check "launcher runs the installed skill, not the clone" sh -c "! grep -q '$REPO' '$HOME/.meta-skill-loop/bin/msl'"
 check "workspace has an id" grep -Eq '^id: [a-z0-9]{4}$' "$HOME/.meta-skill-loop/workspace.yaml"
-check "core skills are managed as framework" grep -q '^kind: framework' "$HOME/.meta-skill-loop/skills/meta-skill-loop/skill.yaml"
-has "core skills start at v1" "$(version_of meta-skill-loop)" "v1"
-"$SH" "$REPO/install.sh" --claude >/dev/null
-has "reinstall without changes adds no version" "$(version_of meta-skill-loop)" "v1"
+check "install manages nothing by itself" test -z "$(ls "$HOME/.meta-skill-loop/skills")"
 has "print the global feedback rule" "$("$SH" "$REPO/install.sh")" "offer to log it with the meta-skill-feedback skill"
 
 echo "scan and add"
@@ -242,24 +241,6 @@ $MSL update deploy --apply >/dev/null
 out="$(cat "$HOME/work/.cursor/skills/deploy/SKILL.md")"
 if grep -qF -- "smoke test" <<<"$out" && grep -qF -- "announce in the channel" <<<"$out"; then ok "repo change merged with your refinement"; else bad "repo change merged with your refinement" "$out"; fi
 
-echo "framework update through install.sh"
-fake="$(mktemp -d)"
-cp -R "$REPO/." "$fake/"
-rm -rf "$fake/.git"
-printf '\nNew upstream guidance.\n' >> "$fake/skills/meta-skill-feedback/SKILL.md"
-printf '\nNew refine guidance.\n' >> "$fake/skills/meta-skill-refine/SKILL.md"
-sed 's/^# meta-skill-refine$/# meta-skill-refine (My local tweak.)/' "$HOME/.agents/skills/meta-skill-refine/SKILL.md" > "$HOME/x" && mv "$HOME/x" "$HOME/.agents/skills/meta-skill-refine/SKILL.md"
-$MSL keep meta-skill-refine -m tweak >/dev/null
-out="$("$SH" "$fake/install.sh" --claude)"
-has "unrefined core skill is updated directly" "$(cat "$HOME/.agents/skills/meta-skill-feedback/SKILL.md")" "New upstream guidance."
-check "update reaches the other installed copy" grep -q "New upstream guidance." "$HOME/.claude/skills/meta-skill-feedback/SKILL.md"
-has "refined core skill asks for review" "$out" "has your refinements; review the upstream"
-has "refinement still live" "$(cat "$HOME/.agents/skills/meta-skill-refine/SKILL.md")" "My local tweak."
-$MSL update meta-skill-refine >/dev/null
-$MSL update meta-skill-refine --apply >/dev/null
-out="$(cat "$HOME/.agents/skills/meta-skill-refine/SKILL.md")"
-if grep -qF -- "My local tweak." <<<"$out" && grep -qF -- "New refine guidance." <<<"$out"; then ok "reviewed framework update keeps your tweak"; else bad "reviewed framework update keeps your tweak" "$out"; fi
-
 echo "remove and legacy workspace"
 skill "$HOME/.agents/skills/tmp-skill" tmp-skill
 orig="$(cat "$HOME/.agents/skills/tmp-skill/SKILL.md")"
@@ -273,6 +254,16 @@ check "feedback ids keep increasing" test -f "$HOME/.meta-skill-loop/skills/gril
 legacy="$(mktemp -d)"
 mkdir -p "$legacy/.git"
 check "an old unreleased workspace is refused with instructions" sh -c "MSL_HOME='$legacy' $MSL status 2>&1 | grep -q 'older, unreleased build'"
+
+echo "launcher follows the installed skill"
+hub="$HOME/.agents/skills/meta-skill-loop/scripts/msl"
+sed 's/^MSL_VERSION="[^"]*"/MSL_VERSION="9.9.9"/' "$hub" > "$HOME/x" && mv "$HOME/x" "$hub"
+has "updating the skill updates msl (no stale copy)" "$($MSL version)" "9.9.9"
+rm -rf "$HOME/.agents/skills/meta-skill-loop"
+has "launcher falls back to another installed copy" "$($MSL version)" "0."
+check "launcher now points at that copy" grep -q '.claude/skills/meta-skill-loop" "' "$HOME/.meta-skill-loop/bin/msl"
+rm -rf "$HOME/.claude/skills/meta-skill-loop"
+has "launcher explains how to reinstall" "$($MSL status 2>&1 || true)" "npx skills add SoulEvill/meta-skill-loop"
 
 printf '\n%s passed, %s failed\n' "$pass" "$fail"
 [ "$fail" = 0 ]

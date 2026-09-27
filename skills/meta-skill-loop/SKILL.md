@@ -7,12 +7,12 @@ description: Manage agent skills, their versions, and their feedback. Use when t
 
 meta-skill-loop helps people improve their skills over time: it collects feedback on any skill and keeps a version history of each one. Skills stay exactly where their tool loads them (`~/.cursor/skills`, `~/.agents/skills`, `~/.claude/skills`, a repo's `.cursor/skills`, …). meta-skill-loop **never edits a skill except to apply a change the user approved**. Its own data (feedback and versions) lives in `~/.meta-skill-loop/`.
 
-All bookkeeping goes through one script, `msl`. Run it as `~/.meta-skill-loop/bin/msl`. If that file doesn't exist, run `scripts/msl init` from this skill's folder once.
+All bookkeeping goes through one script, `msl`. Run it as `~/.meta-skill-loop/bin/msl`. The first time, that file won't exist yet: run `scripts/msl init` from this skill's folder, which sets up the workspace and that launcher.
 
 **How versions work.** Each managed skill has a version history, like git:
 - **Live edits:** changes in the skill folder that aren't a version yet. They come from refine, a skill-creator tool, or a hand edit.
 - **Keep:** `msl keep` turns the live edits into the next version (v2, v3, …). **Undo:** `msl undo` discards them. They're saved, so `msl redo` brings them back.
-- **Upstream:** a skill someone else publishes (installed with the `skills` CLI, living in a git repo, or one of meta-skill-loop's own skills) also tracks the published versions. Updates are merged into the user's version instead of overwriting it.
+- **Upstream:** a skill someone else publishes (installed with the `skills` CLI, or living in a git repo) also tracks the published versions. Updates are merged into the user's version instead of overwriting it.
 
 ## What the user can ask for
 
@@ -38,7 +38,6 @@ Run `~/.meta-skill-loop/bin/msl status` and summarize it in a few lines. It show
    - `local`: the user's own folder.
    - `skills-cli`: installed by the `skills` CLI.
    - `git`: lives in a git repo.
-   - `framework`: one of meta-skill-loop's own skills.
 4. Show `msl status` at the end.
 5. The first time, suggest the one-line setup below if the user hasn't done it.
 

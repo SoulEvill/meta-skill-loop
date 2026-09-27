@@ -17,12 +17,15 @@ use a skill ──► "feedback on pr-review: too many style nits"      → feed
 ## Install
 
 ```sh
-git clone https://github.com/SoulEvill/meta-skill-loop
-meta-skill-loop/install.sh            # Cursor + Codex (~/.agents/skills)
-meta-skill-loop/install.sh --claude   # also Claude Code (~/.claude/skills)
+npx skills add SoulEvill/meta-skill-loop -g --copy
 ```
 
-The installer copies three skills into your tools' skill folders and creates `~/.meta-skill-loop/`. Re-run it to update. meta-skill-loop manages its own skills too, so if you've refined one, the update is merged for your review.
+That's the standard [`skills` CLI](https://github.com/vercel-labs/skills): pick Cursor, Codex, and/or Claude Code when it asks, or pass `-a cursor -a codex -a claude-code`. `--copy` matters for Cursor, which doesn't reliably load symlinked skills. There's no other setup: the first time you use one of the skills, it creates `~/.meta-skill-loop/`.
+
+- **Update:** `npx skills update`. If you've refined meta-skill-loop's own skills, say "update meta-skill-loop" to merge the new version with your changes for review instead.
+- **Pin a version:** install from a release tag, e.g. `npx skills add https://github.com/SoulEvill/meta-skill-loop/tree/v0.2.0 -g --copy`.
+- **No Node.js?** `git clone https://github.com/SoulEvill/meta-skill-loop && meta-skill-loop/install.sh` (add `--claude` for Claude Code) copies the same folders.
+- **Privacy note:** the `skills` CLI sends anonymous usage stats; set `DO_NOT_TRACK=1` to turn that off.
 
 **Recommended, once:** add this line to your agent's own rules, so it offers to log feedback when you correct a skill:
 
@@ -80,7 +83,6 @@ msl rollback <name> <vN> [--only]                   msl update <name> [--check |
   - `local`: only you.
   - `skills-cli`: `npx skills update` writes it; the lock file tells us the upstream version.
   - `git`: `git pull` and teammates write it; the repo history tells us.
-  - `framework`: meta-skill-loop's own skills.
 - **States:**
   - `clean`: the folder is your current version.
   - `changed`: live edits not kept yet; they're saved automatically.
@@ -104,7 +106,12 @@ Design, roadmap, and the latest session handoff live in [`docs/`](docs/): [desig
 ```sh
 tests/run.sh                          # end-to-end, in a throwaway $HOME
 TEST_BASH=/bin/bash tests/run.sh      # on macOS: check bash 3.2 compatibility
-shellcheck install.sh tests/run.sh skills/meta-skill-loop/scripts/msl
+tests/lint-skills.sh                  # skills stay portable (Agent Skills format)
+tests/package.sh                      # install with the real skills CLI (needs Node)
+tests/agent/run.sh claude-code        # real agent end to end (needs an API key; costs model calls)
+shellcheck install.sh tests/*.sh tests/agent/*.sh skills/meta-skill-loop/scripts/msl
 ```
+
+Releases, CI, and repository settings: [docs/maintaining.md](docs/maintaining.md).
 
 MIT licensed.

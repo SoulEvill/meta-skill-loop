@@ -2,7 +2,7 @@
 
 Rewritten at the end of every working session, so the next session (human or agent, local or cloud) can pick up. It's a snapshot, not a history. For the design, see [design.md](design.md). The code is the source of truth.
 
-_Last updated: 2026-09-28, after cross-tool testing._
+_Last updated: 2026-09-28, after packaging and CI._
 
 ## Where things stand
 
@@ -56,12 +56,17 @@ _Last updated: 2026-09-28, after cross-tool testing._
 - The `cursor-agent` CLI installs.
 - It requires login or `CURSOR_API_KEY`, and none was available, so there were no runs.
 
-## Open: packaging (proposal given to the user, not yet decided)
+## Packaging and CI (done, 2026-09-28; see design.md §7a and maintaining.md)
 
-- Make `npx skills add SoulEvill/meta-skill-loop` the primary install. Any of the three skills bootstraps the workspace on first use.
-- Replace the copied `~/.meta-skill-loop/bin/msl` with a shim that runs the installed hub skill's `scripts/msl`. Today a `skills update` leaves the copied `msl` stale.
-- Drop the `framework` kind and most of `install.sh`: our own skills become ordinary `skills-cli` skills.
-- Version with semver git tags and GitHub Releases.
+- **Install:** `npx skills add SoulEvill/meta-skill-loop -g --copy` is the primary install. `install.sh` is a copy-only fallback.
+- **First use:** any of the three skills sets up the workspace itself.
+- **`~/.meta-skill-loop/bin/msl`** is a launcher into the installed skill, so there's no stale copy after an update.
+- **The `framework` kind is removed.** meta-skill-loop's own skills are ordinary managed skills.
+- **CI** runs on every push and PR: `lint` (shellcheck plus the skills lint), `test` (Ubuntu and macOS bash 3.2), and `package` (a real `skills` CLI install on Ubuntu and macOS).
+- **`release`** runs on `v*` tags. It checks the tag is on `main` and equals `MSL_VERSION` (now 0.2.0), reruns every test, and creates a GitHub Release.
+- **`agent-tests`** is manual and owner-only, with keys in the `agent-tests` environment. Claude Code is verified end to end here; Cursor and Codex paths are experimental.
+- **Repository protection is clicked in GitHub settings** (checklist in `docs/maintaining.md`). It can't be set from a session.
+- **`npx skills add SoulEvill/meta-skill-loop` only works once this branch is merged to `main`**, because main has only the README and license today.
 
 ## Decided (details in design.md §5–7)
 
@@ -78,12 +83,7 @@ _Last updated: 2026-09-28, after cross-tool testing._
 
 ## Next steps
 
-1. The user tries v1.1 in Cursor on their own skills: install, add, feedback, refine, keep, update.
-2. Fix what that turns up, then open the PR from the branch to `main`.
-3. Then plan v2 (`contribute`).
-
-## Notes for the next agent
-
-- In this cloud environment, headless `claude -p` with permission checks skipped is blocked. Simulate Cursor with role-playing subagents instead: give them the skill list and the user's rule, and relay user turns one at a time.
-- Bash 3.2 can be built from source for local testing; see `AGENTS.md` for the compatibility rules.
-- Two tests failed only because two edits touched adjacent lines, which git merge correctly treats as a conflict. Keep test edits on separate lines.
+1. The user configures repo protection from `docs/maintaining.md`: the `main` ruleset, the `v*` tag ruleset, Actions settings, and optionally the `agent-tests` environment and keys.
+2. The user tries it in Cursor: install from this branch or a local clone, then add, feedback, refine, keep, update.
+3. Open the PR from this branch to `main`, merge when CI is green, then tag `v0.2.0` so `npx skills add SoulEvill/meta-skill-loop` works for everyone.
+4. Then v2 (`contribute`).

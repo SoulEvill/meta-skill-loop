@@ -7,7 +7,7 @@ description: Improve a skill from its logged feedback. Use when the user says "r
 
 Turn a skill's accumulated feedback into a small, approved change, and record it as a new version tied to the feedback it fixes.
 
-Run `msl` as `~/.meta-skill-loop/bin/msl`.
+Run `msl` as `~/.meta-skill-loop/bin/msl`. The first time, that file won't exist yet: set it up by running `scripts/msl init` in the `meta-skill-loop` skill's folder, which is installed next to this skill's folder (`../meta-skill-loop/scripts/msl init`), then continue.
 
 ## Steps
 
@@ -43,7 +43,7 @@ Run `msl` as `~/.meta-skill-loop/bin/msl`.
    For feedback the user decides not to act on, run `msl feedback mark <id> declined -m "<reason>"`.
 
 6. **Close out.** Summarize what changed and what's still open.
-   - If the skill has an upstream (kind `skills-cli`, `git`, or `framework` in `msl status`), mention two things. Future upstream updates will be merged with this change for their review rather than overwriting it. And if the change would help everyone, it's worth sending to the skill's source as a PR or issue, with the evidence summarized and anything private removed.
+   - If the skill has an upstream (kind `skills-cli` or `git` in `msl status`), mention two things. Future upstream updates will be merged with this change for their review rather than overwriting it. And if the change would help everyone, it's worth sending to the skill's source as a PR or issue, with the evidence summarized and anything private removed.
 
 ## Rules
 

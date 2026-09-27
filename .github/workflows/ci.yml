@@ -1,15 +1,29 @@
 name: ci
 
+# Runs on every push to this repo (only people with write access can push) and on
+# pull requests, including from forks. Fork PRs get a read-only token and no
+# secrets, and nothing here needs secrets. Never switch this to pull_request_target.
 on:
   push:
   pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - run: shellcheck -s bash install.sh tests/run.sh skills/meta-skill-loop/scripts/msl
+      - uses: actions/checkout@v5
+      - name: shellcheck
+        run: shellcheck -s bash install.sh tests/*.sh tests/agent/*.sh skills/meta-skill-loop/scripts/msl
+      - name: skills are portable (Agent Skills format)
+        run: bash tests/lint-skills.sh
 
   test:
     strategy:
@@ -22,6 +36,17 @@ jobs:
             bash: /bin/bash # macOS ships bash 3.2; this is what most Cursor users run
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - run: ${{ matrix.bash }} --version | head -1
       - run: TEST_BASH=${{ matrix.bash }} ${{ matrix.bash }} tests/run.sh
+
+  package:
+    # Installs this repo with the real `skills` CLI for Cursor, Codex, and Claude Code.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - run: bash tests/package.sh

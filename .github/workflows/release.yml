@@ -1,0 +1,33 @@
+name: release
+
+# Publishing a version = pushing a tag like v0.2.0 on a commit that is already on main.
+# Users install from main, or pin a release tag. Protect v* tags with a ruleset so only
+# maintainers can create them (see docs/maintaining.md).
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write # to create the GitHub Release
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Tag is on main and matches the msl version
+        run: |
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main \
+            || { echo "::error::$GITHUB_REF_NAME is not on main"; exit 1; }
+          v="$(sed -n 's/^MSL_VERSION="\(.*\)"$/\1/p' skills/meta-skill-loop/scripts/msl)"
+          [ "v$v" = "$GITHUB_REF_NAME" ] \
+            || { echo "::error::tag $GITHUB_REF_NAME does not match MSL_VERSION $v"; exit 1; }
+      - run: bash tests/lint-skills.sh
+      - run: bash tests/run.sh
+      - run: bash tests/package.sh
+      - name: Create the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes --title "$GITHUB_REF_NAME"
