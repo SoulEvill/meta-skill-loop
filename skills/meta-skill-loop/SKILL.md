@@ -16,9 +16,15 @@ All bookkeeping goes through one script, `msl`. Run it as `~/.meta-skill-loop/bi
 Run `~/.meta-skill-loop/bin/msl status` and summarize it in a few lines:
 - Skills with open feedback: name the top ones and suggest `refine <skill>` when a skill has 2+ open entries.
 - Skills with TRIAGE > 0: these are automatically observed candidates to confirm or dismiss.
-- Any state other than `clean`:
-  - `changed`: edited outside meta-skill-loop, or updated from upstream. Ask which. If the user wants to keep it, run `msl commit <name> -m "<what changed>"`; add `--base` if it was an upstream update.
-  - `reverted`: an update overwrote the user's refinements. `msl show <name>` lists them in the change log; offer to re-apply them, then commit.
+- Any state other than `clean` (handle it as below, after the user agrees):
+  - `reverted`: an update or reinstall put back the same upstream version and wiped the user's changes (their refinements and usually the nudge line). `msl diff <name>` shows exactly what's missing: lines marked `-` are the ones to restore. `msl show <name>` explains why each change exists. Restore them in the skill folder, then `msl nudge <name>` for the nudge line, then `msl commit <name> -m "re-applied after update"` (no `--base`: upstream didn't change).
+  - `changed`: the skill differs from what meta-skill-loop recorded. Run `msl diff <name>` and ask the user which it is:
+    - **Their own edit** (or a creator tool's): keep it with `msl commit <name> -m "<what changed>"`.
+    - **A new upstream version**: do these in order.
+      1. Save the user's refinements first: `msl diff <name> --refinements`. Keep that output; it's the only copy you'll need.
+      2. Record the new upstream as the base: `msl commit <name> --base -m "took upstream update"`.
+      3. Re-apply each refinement from step 1 to the new text, by intent: `msl show <name>` says why each change was made, so adapt the wording if upstream changed it. Drop any refinement the new upstream already covers, and mark its feedback `msl mark <id> resolved-upstream`.
+      4. `msl nudge <name>`, then `msl commit <name> -m "re-applied refinements on new upstream"`.
   - `copies-differ`: the skill is installed in several tool folders and they no longer match. The first path is the primary copy; `msl commit` copies it to the others.
   - `missing`: the folder is gone. Offer `msl remove <name>`.
 - If unmanaged skills exist, mention how many and offer to add them.

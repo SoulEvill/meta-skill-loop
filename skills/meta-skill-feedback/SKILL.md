@@ -11,7 +11,7 @@ Run `msl` as `~/.meta-skill-loop/bin/msl`. If it's missing, tell the user meta-s
 
 ## Steps
 
-1. **Identify the skill.** Usually it's the skill you used earlier in this conversation. If more than one skill was involved, or none obviously was, ask which one. Use the skill's `name` from its frontmatter.
+1. **Identify the skill.** Usually it's the skill you used earlier in this conversation. If more than one skill was involved, or none obviously was, ask which one. Use the skill's `name` from its frontmatter. If that skill only hands off to another skill (for example, "use the grilling skill"), log the feedback on the skill whose instructions actually produced the behavior.
 
 2. **Make sure it's managed.** Run `msl status <name>`. If it isn't listed, run `msl add <name>` and tell the user in one line that it's now managed.
 

@@ -580,6 +580,41 @@ cmd_show() { # name [--all]
 
 cmd_path() { require_managed "${1:?usage: msl path <name>}"; primary_path "$1"; }
 
+# Show exact text differences, so an agent can re-apply or review changes.
+#   msl diff <name>                intended (current) -> live: what changed or was lost on disk
+#   msl diff <name> --refinements  upstream (base) -> intended (current): your local changes
+cmd_diff() {
+  local name="${1:-}" from to label_from label_to
+  [ -n "$name" ] || die "usage: msl diff <name> [--refinements]"
+  require_managed "$name"
+  if [ "${2:-}" = "--refinements" ]; then
+    from="$(skill_dir "$name")/base"; label_from="base (upstream)"
+    to="$(skill_dir "$name")/current"; label_to="current (intended)"
+  else
+    from="$(skill_dir "$name")/current"; label_from="current (intended)"
+    to="$(primary_path "$name")"; label_to="live ($(tilde "$to"))"
+  fi
+  printf '# %s -> %s\n' "$label_from" "$label_to"
+  if [ "$(dir_hash "$from")" = "$(dir_hash "$to")" ]; then
+    printf '(no differences)\n'
+    return 0
+  fi
+  diff -ru -x '.*' "$from" "$to" || true
+}
+
+# Re-insert the feedback nudge line (e.g. after an update removed it).
+cmd_nudge() {
+  local name="${1:-}" p
+  [ -n "$name" ] || die "usage: msl nudge <name>"
+  require_managed "$name"
+  while IFS= read -r p; do
+    if [ -n "$p" ] && [ -f "$p/SKILL.md" ]; then insert_nudge "$p"; fi
+  done <<EOF
+$(meta_paths "$name")
+EOF
+  printf 'nudge line present in %s\n' "$name"
+}
+
 cmd_remove() {
   local name="${1:-}" p dest
   [ -n "$name" ] || die "usage: msl remove <name>"
@@ -612,6 +647,8 @@ msl $MSL_VERSION: meta-skill-loop bookkeeping (data in $(tilde "$MSL_HOME"))
   msl status [name]                 managed skills, open feedback, state
   msl show <name> [--all]           metadata, feedback, and change history
   msl path <name>                   where the skill lives (primary copy)
+  msl diff <name> [--refinements]   intended vs live, or upstream vs your refinements
+  msl nudge <name>                  re-insert the feedback nudge line
   msl log <name> [--severity S] [--origin explicit|observed] [--confidence C]
           [--tool T] [--project P] < body
   msl mark <fb-id> <status> [-m note]
@@ -634,6 +671,8 @@ main() {
     status) cmd_status "$@" ;;
     show) cmd_show "$@" ;;
     path) cmd_path "$@" ;;
+    diff) cmd_diff "$@" ;;
+    nudge) cmd_nudge "$@" ;;
     remove) cmd_remove "$@" ;;
     diverged) cmd_diverged "$@" ;;
     hash) dir_hash "${1:?usage: msl hash <dir>}" ;;

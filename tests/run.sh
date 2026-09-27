@@ -92,6 +92,18 @@ check "commit with unknown feedback id fails" sh -c "! $MSL commit grill-me -m x
 cp "$HOME/.meta-skill-loop/skills/grill-me/base/SKILL.md" "$HOME/.cursor/skills/grill-me/SKILL.md"
 out="$($MSL status grill-me)"
 if contains "$out" reverted; then ok "overwrite by upstream shows as reverted"; else bad "overwrite by upstream shows as reverted" "$out"; fi
+out="$($MSL diff grill-me)"
+if contains "$out" "-Ask at most 5 questions per round."; then ok "diff shows what an update removed"; else bad "diff shows what an update removed" "$out"; fi
+out="$($MSL diff grill-me --refinements)"
+if contains "$out" "+Ask at most 5 questions per round." && contains "$out" "+> If the user gives feedback"; then ok "diff --refinements shows local changes vs upstream"; else bad "diff --refinements shows local changes vs upstream" "$out"; fi
+cp "$HOME/.meta-skill-loop/skills/grill-me/current/SKILL.md" "$HOME/.cursor/skills/grill-me/SKILL.md"
+out="$($MSL diff grill-me)"
+if contains "$out" "(no differences)"; then ok "diff reports no differences when restored"; else bad "diff reports no differences when restored" "$out"; fi
+cp "$HOME/.meta-skill-loop/skills/grill-me/base/SKILL.md" "$HOME/.cursor/skills/grill-me/SKILL.md"
+$MSL nudge grill-me >/dev/null
+check "nudge re-inserts the line" grep -q 'meta-skill-feedback' "$HOME/.cursor/skills/grill-me/SKILL.md"
+$MSL nudge grill-me >/dev/null
+check "nudge is idempotent" test "$(grep -c 'meta-skill-feedback' "$HOME/.cursor/skills/grill-me/SKILL.md")" = 1
 out="$($MSL show grill-me --all)"
 if contains "$out" "cap questions" && contains "$out" "one-off"; then ok "show includes history and feedback"; else bad "show includes history and feedback" "$out"; fi
 

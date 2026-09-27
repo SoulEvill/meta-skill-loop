@@ -61,7 +61,7 @@ Adding a skill inserts one line after its frontmatter that asks the agent to off
 msl status [name]            msl scan               msl add <name|path> [--own|--upstream]
 msl log <name> < body        msl show <name>        msl commit <name> -m <summary> --fixes fb-0001
 msl mark <fb-id> <status>    msl path <name>        msl set <name> ownership|source <value>
-msl remove <name>
+msl diff <name> [--refinements]                     msl nudge <name>       msl remove <name>
 ```
 
 ## How it thinks about skills
