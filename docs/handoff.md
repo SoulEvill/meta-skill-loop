@@ -2,7 +2,7 @@
 
 Rewritten at the end of every working session, so the next session (human or agent, local or cloud) can pick up. It's a snapshot, not a history. For the design, see [design.md](design.md). The code is the source of truth.
 
-_Last updated: 2026-09-28, end of the v1.1 build session._
+_Last updated: 2026-09-28, after cross-tool testing._
 
 ## Where things stand
 
@@ -33,6 +33,36 @@ _Last updated: 2026-09-28, end of the v1.1 build session._
   - Cursor's approval prompt for writes to `~/.meta-skill-loop`;
   - Codex's writable-roots setting.
 
+## Cross-tool testing (2026-09-28)
+
+**`skills` CLI (real).**
+- `npx skills add <this repo>` finds all 3 skills and installs them for Cursor, Codex and Claude Code: `~/.agents/skills` plus `~/.claude/skills`.
+- `msl` keeps its executable bit.
+- Bootstrapping works with no `install.sh`: `scripts/msl init` runs from the installed hub skill.
+
+**Claude Code (real, headless, default permissions, Bash limited to `msl`).**
+- Skill discovery: all 3 skills listed.
+- Triggering: 5/5 correct. "feedback on X", "status", "versions", and "is there an update" each picked the right skill, and an unrelated coding prompt picked none.
+- The feedback entry was written, tagged `tool: claude-code`.
+- Refine proposed first, then applied after approval, then `keep` made v2 with `Fixes:`.
+- The one-line rule in `~/.claude/CLAUDE.md` changed behavior: with it, the agent offered to log feedback after a natural correction; without it, it didn't.
+
+**Codex.**
+- The CLI installs, and skills install into `~/.agents/skills`.
+- No model run was possible: the environment's OpenAI key has no quota.
+- Still to verify on a real machine: triggering, and the `writable_roots` setting.
+
+**Cursor.**
+- The `cursor-agent` CLI installs.
+- It requires login or `CURSOR_API_KEY`, and none was available, so there were no runs.
+
+## Open: packaging (proposal given to the user, not yet decided)
+
+- Make `npx skills add SoulEvill/meta-skill-loop` the primary install. Any of the three skills bootstraps the workspace on first use.
+- Replace the copied `~/.meta-skill-loop/bin/msl` with a shim that runs the installed hub skill's `scripts/msl`. Today a `skills update` leaves the copied `msl` stale.
+- Drop the `framework` kind and most of `install.sh`: our own skills become ordinary `skills-cli` skills.
+- Version with semver git tags and GitHub Releases.
+
 ## Decided (details in design.md §5–7)
 
 - Skills stay in place; there's no central store. meta-skill-loop never edits a skill except to apply an approved change.
@@ -42,9 +72,7 @@ _Last updated: 2026-09-28, end of the v1.1 build session._
 - Team feedback layer and multi-machine sync: designed for, not built.
 - Docs live in `docs/`. The Wiki was rejected because cloud sessions can't push to wikis (anthropics/claude-code#86787).
 
-## Open questions
-
-None blocking. Candidates for later:
+## Later
 - `contribute` (v2): a refinement becomes a PR to the skill's source.
 - Automatic observers (v3).
 
