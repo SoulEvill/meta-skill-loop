@@ -867,7 +867,7 @@ cmd_history() {
 
 cmd_rollback() { # name vN [--only] [--yes]
   local name="${1:-}" target="${2:-}" only=0 yes=0 state v merges ids
-  [ -n "$name" ] && [ -n "$target" ] || die "usage: msl rollback <name> <vN> [--only] [--yes]"
+  if [ -z "$name" ] || [ -z "$target" ]; then die "usage: msl rollback <name> <vN> [--only] [--yes]"; fi
   shift 2
   while [ $# -gt 0 ]; do
     case "$1" in --only) only=1 ;; --yes) yes=1 ;; *) die "rollback: unknown option $1" ;; esac
