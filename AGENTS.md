@@ -13,7 +13,7 @@ This repo is the public source of meta-skill-loop: three agent skills plus `msl`
 
 - **Bash 3.2 compatible** (macOS default): no associative arrays, `mapfile`, `${x,,}`, `|&`, or `readarray`. Avoid GNU-only flags: no `sed -i`, use `sha256sum` or `shasum -a 256`, and `find`/`sort`/`date` flags that BSD supports.
 - **Zero dependencies** beyond POSIX tools and git. `node` is optional and only used to read the `skills` CLI lock file.
-- Under `set -euo pipefail`, guard pipelines that can legitimately find nothing (`grep … || true`), and avoid `head` on pipes (SIGPIPE); use `sed -n 1p`.
+- Under `set -euo pipefail`, guard pipelines that can legitimately find nothing (`grep … || true`). Never end a pipe in something that exits early: no `head` (use `sed -n 1p`) and no `grep -q` (use `grep … >/dev/null`), or the writer gets SIGPIPE and the check fails at random.
 - Never move or delete a user's skill folder. meta-skill-loop manages skills in place; the only in-place edits are the nudge line and approved refinements.
 - The skill texts are the product. Keep them short and imperative, and make them work in every tool.
 - Every behavior change gets a test in `tests/run.sh`. Before pushing, run `tests/run.sh`, `shellcheck install.sh tests/run.sh skills/meta-skill-loop/scripts/msl`, and, if you can, `TEST_BASH=/bin/bash tests/run.sh` on macOS.

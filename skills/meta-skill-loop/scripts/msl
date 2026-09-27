@@ -282,9 +282,9 @@ EOF
     echo clean; return 0
   fi
   if has_upstream; then
-    if upstream_trees | grep -qx "$t"; then echo upstream-live; return 0; fi
+    if upstream_trees | grep -x "$t" >/dev/null; then echo upstream-live; return 0; fi
     rev="$(current_rev "$1")"
-    if [ -n "$rev" ] && ! upstream_revs | grep -qx "$rev"; then echo upstream-update; return 0; fi
+    if [ -n "$rev" ] && ! upstream_revs | grep -x "$rev" >/dev/null; then echo upstream-update; return 0; fi
   fi
   echo changed
 }
@@ -311,7 +311,7 @@ lost_edits() {
   [ "$s" != "$(cat "$GD/msl-discarded" 2>/dev/null || true)" ] || return 1
   t="$(g rev-parse "$s^{tree}")"
   [ "$t" != "$(live_tree)" ] || return 1
-  ! g log mine --format=%T | grep -qx "$t"
+  ! g log mine --format=%T | grep -x "$t" >/dev/null
 }
 
 # Does your version differ from the upstream it was last merged with?
@@ -352,7 +352,7 @@ commit_version() { # name message [trailers]
 import_upstream() { # dir rev
   local t c rev="${2:-unknown}"
   t="$(tree_of_dir "$1")"
-  if upstream_trees | grep -qx "$t"; then return 1; fi
+  if upstream_trees | grep -x "$t" >/dev/null; then return 1; fi
   c="$(g commit-tree "$t" -p upstream -m "upstream: $rev" -m "Upstream-Rev: $rev")"
   g update-ref refs/heads/upstream "$c"
 }
@@ -557,7 +557,7 @@ cmd_add_path() { # name path  (internal: register another installed copy)
   local p
   use_skill "${1:?usage: msl add-path <name> <path>}"
   p="$(abspath "${2:?}")" || die "no such folder: $2"
-  meta_paths "$1" | grep -qx "$p" && return 0
+  meta_paths "$1" | grep -x "$p" >/dev/null && return 0
   printf '  - %s\n' "$(tilde "$p")" >> "$(meta_file "$1")"
 }
 

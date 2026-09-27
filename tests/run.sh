@@ -16,10 +16,10 @@ check() { # description, command...
   if out="$("$@" 2>&1)"; then ok "$d"; else bad "$d" "$out"; fi
 }
 has() { # description, haystack, needle
-  if printf '%s' "$2" | grep -qF -- "$3"; then ok "$1"; else bad "$1" "$2"; fi
+  if grep -qF -- "$3" <<<"$2"; then ok "$1"; else bad "$1" "$2"; fi
 }
 lacks() {
-  if printf '%s' "$2" | grep -qF -- "$3"; then bad "$1" "$2"; else ok "$1"; fi
+  if grep -qF -- "$3" <<<"$2"; then bad "$1" "$2"; else ok "$1"; fi
 }
 
 new_home() {
@@ -136,7 +136,7 @@ $MSL keep grill-me -m "retitle A" >/dev/null
 echo "Line B." >> "$HOME/.cursor/skills/grill-me/SKILL.md"; $MSL keep grill-me -m "add B" >/dev/null
 $MSL rollback grill-me v4 --only >/dev/null
 out="$(cat "$HOME/.cursor/skills/grill-me/SKILL.md")"
-if printf '%s' "$out" | grep -q "Line B." && ! printf '%s' "$out" | grep -q "(A)"; then ok "rollback --only undoes just that version"; else bad "rollback --only undoes just that version" "$out"; fi
+if grep -qF -- "Line B." <<<"$out" && ! grep -qF -- "(A)" <<<"$out"; then ok "rollback --only undoes just that version"; else bad "rollback --only undoes just that version" "$out"; fi
 echo "dirty" >> "$HOME/.cursor/skills/grill-me/SKILL.md"
 check "rollback refuses with uncommitted edits" sh -c "! $MSL rollback grill-me v1"
 $MSL undo grill-me >/dev/null
@@ -184,7 +184,7 @@ has "diff --merge shows what would change" "$($MSL diff grilling --merge)" "+Sum
 check "a second update waits for the pending merge" sh -c "! $MSL update grilling --no-fetch"
 has "apply makes the next version" "$($MSL update grilling --apply)" "v3: grilling now runs upstream bbbbbbbbbbbb with your refinements"
 out="$(cat "$HOME/.agents/skills/grilling/SKILL.md")"
-if printf '%s' "$out" | grep -q "Ask at most 3" && printf '%s' "$out" | grep -q "Summarize at the end."; then ok "merged skill has upstream change and your refinement"; else bad "merged skill has upstream change and your refinement" "$out"; fi
+if grep -qF -- "Ask at most 3" <<<"$out" && grep -qF -- "Summarize at the end." <<<"$out"; then ok "merged skill has upstream change and your refinement"; else bad "merged skill has upstream change and your refinement" "$out"; fi
 has "history shows the upstream merge" "$($MSL history grilling)" "took upstream bbbbbbbbbbbb"
 has "up to date afterwards" "$($MSL update grilling --no-fetch)" "up to date"
 # Reinstalling the same upstream version wipes your refinements from the folder.
@@ -240,7 +240,7 @@ has "a pulled repo change is detected" "$(state_of deploy)" "upstream-update"
 $MSL update deploy >/dev/null
 $MSL update deploy --apply >/dev/null
 out="$(cat "$HOME/work/.cursor/skills/deploy/SKILL.md")"
-if printf '%s' "$out" | grep -q "smoke test" && printf '%s' "$out" | grep -q "announce in the channel"; then ok "repo change merged with your refinement"; else bad "repo change merged with your refinement" "$out"; fi
+if grep -qF -- "smoke test" <<<"$out" && grep -qF -- "announce in the channel" <<<"$out"; then ok "repo change merged with your refinement"; else bad "repo change merged with your refinement" "$out"; fi
 
 echo "framework update through install.sh"
 fake="$(mktemp -d)"
@@ -258,7 +258,7 @@ has "refinement still live" "$(cat "$HOME/.agents/skills/meta-skill-refine/SKILL
 $MSL update meta-skill-refine >/dev/null
 $MSL update meta-skill-refine --apply >/dev/null
 out="$(cat "$HOME/.agents/skills/meta-skill-refine/SKILL.md")"
-if printf '%s' "$out" | grep -q "My local tweak." && printf '%s' "$out" | grep -q "New refine guidance."; then ok "reviewed framework update keeps your tweak"; else bad "reviewed framework update keeps your tweak" "$out"; fi
+if grep -qF -- "My local tweak." <<<"$out" && grep -qF -- "New refine guidance." <<<"$out"; then ok "reviewed framework update keeps your tweak"; else bad "reviewed framework update keeps your tweak" "$out"; fi
 
 echo "remove and legacy workspace"
 skill "$HOME/.agents/skills/tmp-skill" tmp-skill
