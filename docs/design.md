@@ -1,6 +1,6 @@
 # meta-skill-loop: design
 
-Status: v1 · 2026-09-27
+Status: v1.1 · 2026-09-28
 
 ## 1. Problem
 
@@ -13,7 +13,8 @@ It is a **management layer for the feedback loop around skills**:
 1. **Add**: enroll skills you already have, wherever they live.
 2. **Capture**: mid-use, "feedback on this skill" writes a structured entry with evidence.
 3. **Refine**: later, turn accumulated feedback into the smallest approved edit, with a record of why.
-4. **Status**: see every managed skill, its open feedback, and anything that needs attention.
+4. **Version**: every kept change is a version you can compare or roll back; upstream updates are merged with your changes for review instead of overwriting them.
+5. **Status**: see every managed skill, its version, its open feedback, and anything that needs attention.
 
 It is **not** a skill authoring tool (use Cursor `/create-skill`, Anthropic's `skill-creator`, or an editor), **not** an installer or package manager (use the [`skills` CLI](https://github.com/vercel-labs/skills) or copy folders), and **not** a place to host skills. It holds only its own data.
 
@@ -21,7 +22,7 @@ It is **not** a skill authoring tool (use Cursor `/create-skill`, Anthropic's `s
 
 | Layer | Job | Where it lives |
 |---|---|---|
-| **meta-skill-loop** | feedback, refine, status, (v2) update-merge and contribute | this public repo + `~/.meta-skill-loop/` per user |
+| **meta-skill-loop** | feedback, refine, versions, reviewed updates, status; (v2) contribute | this public repo + `~/.meta-skill-loop/` per user |
 | **Packs** | share skills: one git repo per *audience* (team, personal, public), not one per skill | their own repos; installed per skill with `npx skills add <repo> --skill <name> --copy -g` |
 | **Hub** (optional) | a personal "menu" skill that lists the skills you care about, grouped your way, and routes to them | a skill in your own pack; can show `msl status` as a health column |
 
@@ -42,27 +43,39 @@ Hence:
 - Nothing depends on hooks or Claude-only features (`!command` injection, `${CLAUDE_SKILL_DIR}`).
 - Everything mechanical is in one bash 3.2 script, and the agent only does judgment.
 
-## 5. Data model
+## 5. Data model (v1.1)
 
 ```
-~/.meta-skill-loop/                 local git repo: history and undo; never push publicly
+~/.meta-skill-loop/                  local only; can hold private evidence, so never push it publicly
+  workspace.yaml                     id: k3x9 (random, created once), used in feedback ids
   bin/msl
   skills/<name>/
-    skill.yaml                      name, ownership (own|upstream), source, added, paths (primary first)
-    feedback/fb-0007.md             one file per entry
-    changes.md                      ch-0001…: every change, with the feedback ids it addresses
-    base/                           upstream version last taken (pristine)
-    current/                        intended version: base + your refinements
-  archive/                          data of skills you stopped managing
+    skill.yaml                       name, kind (local|skills-cli|git|framework), source, added, paths (primary first)
+    git/                             the skill's version history (git dir; its working tree is the live skill folder)
+    feedback/fb-k3x9-007.md          one file per entry
+    merge/                           only while an upstream merge waits for review (a temporary git worktree)
+  archive/                           data of skills you stopped managing
 ```
+
+**One git repo per skill, two branches** (the classic "vendor branch" pattern):
+
+```
+  upstream:  U1 (abc123) ───────────── U2 (def456)      pristine published versions only (not for local skills)
+               \                         \
+  mine:         v1 ── v2 ── v3 ─────────── v4 (merge)    what the tools load = upstream + your refinements
+```
+
+- The git dir sits in the workspace with `core.worktree` pointing at the live folder, so the folder **is** the working tree of `mine`. There's nothing to re-point, tools never see a `.git`, and installers can overwrite files without destroying history. Dotfiles are ignored.
+- Every commit on `mine` is a version and is tagged `v1`, `v2`, …. Commit trailers record why: `Fixes: fb-…`, `Upstream-Rev: <rev>`, `Reverts: vN`, `Rollback-To: vN`, `Resolved-Upstream: fb-…`.
+- Uncommitted edits in the live folder are "live edits". Each `msl` call that sees them saves them with `git stash`, so nothing unversioned can be lost. `undo` discards them and `redo` re-applies the latest saved ones.
 
 **Feedback entry.**
 
 ```markdown
 ---
-id: fb-0007
+id: fb-k3x9-007
 skill: pr-review
-skill_hash: 3f9a1c0b2d4e      # version the feedback was about
+version: v3                   # or v3+edits: the version the feedback was about
 at: 2026-09-28T14:02Z
 tool: cursor
 project: payments-api
@@ -70,106 +83,65 @@ origin: explicit              # explicit | observed
 confidence: high              # high | medium | low
 severity: annoying            # nit | annoying | wrong
 status: open                  # candidate | open | applied | declined | resolved-upstream
-resolution: ch-0003           # set when applied/declined
+resolution: v4                # set when applied/declined/reopened
 ---
 - asked / observed / expected / user said / evidence
 ```
 
-One file per entry means no append races between concurrent sessions, and easy deduplication. `msl log` is the **single writer**: it assigns ids, stamps hashes and times, and validates fields, whether the caller is the feedback skill today or an observer later.
+One file per entry means no append races between concurrent sessions, and easy deduplication. `msl feedback add` is the **single writer**: it assigns ids, stamps the version and time, and validates fields, whether the caller is the feedback skill today or an observer later.
 
-**State** compares *live* (on disk) with *current* and *base*:
+**Who else writes the folder** (decided at `add`) determines how an upstream update is recognized:
 
-| live = current | live = base | state | meaning |
-|---|---|---|---|
-| yes | – | `clean` (or `copies-differ` if other installed copies don't match) | |
-| no | yes | `reverted` | an update/reinstall overwrote your refinements |
-| no | no | `changed` | edited outside msl, or a new upstream version landed |
-| – | – | `missing` | folder gone |
+| kind | Other writer | New upstream recognized by |
+|---|---|---|
+| `local` | nobody | never: every change is yours |
+| `skills-cli` | `npx skills update` | lock-file revision not yet recorded on `upstream` |
+| `git` | `git pull`, teammates | the last commit touching the folder isn't recorded yet |
+| `framework` | `install.sh` | install records the new version itself |
+
+**States:**
+
+| State | Meaning |
+|---|---|
+| `clean` | the live folder is the current version |
+| `changed` | live edits (yours, a creator tool's, a hand edit), saved automatically |
+| `upstream-update` | an installer or pull put a **new** upstream version in place; yours is safe on `mine` |
+| `upstream-live` | an already-known upstream version was put back (e.g. a reinstall); your refinements aren't live |
+| `copies-differ` | the same skill in several tool folders no longer matches |
+| `missing` | folder gone |
 
 ## 6. Flows
 
-- **Add.** Find every installed copy with that name. Detect the source from `~/.agents/.skill-lock.json` (which makes it `upstream`), otherwise `own`. Snapshot `base`, insert the nudge line, snapshot `current`, and log `ch-0001`.
-- **Nudge.** One line after the frontmatter: *"If the user gives feedback on how this skill behaved, log it with the `meta-skill-feedback` skill."* It's the portable stand-in for a hook. Capture also works without it, because the feedback skill triggers on its own description.
-- **Capture.** Identify the skill, add it if needed, write asked/observed/expected/user-said/evidence (trimmed, with no secrets), then `msl log`. It never edits the skill.
-- **Refine.** `msl show`, then group feedback into themes (flagging entries whose `skill_hash` is stale), propose the smallest diff, and wait for approval. Edit in place, then `msl commit --fixes …`, which snapshots `current`, propagates to other copies, logs the change, and marks entries `applied`.
-- **Updates (v1).** Reinstalling or `skills update` overwrites in place, so status shows `reverted` and the change log says what to re-apply. `install.sh` refuses to overwrite a refined meta-skill-loop skill.
+- **Add.** Find every installed copy with that name; the first is primary, the others are mirrors kept in sync. Detect the kind. Create the git dir and commit the folder as `v1` (with `Upstream-Rev` and an `upstream` branch if it has one). **The skill file is not modified.**
+- **Capture.** Identify the skill, add it if needed, write asked/observed/expected/user-said/evidence (trimmed, with no secrets), then `msl feedback add`. It never edits the skill. The agent offers capture after a correction because of one line the user adds once to their tool's own rules (installer prints it). meta-skill-loop no longer inserts anything into skills.
+- **Refine.** Status must be clean. The agent reads the open feedback, writes a brief (themes, then desired behavior), and proposes the smallest edit. A skill-creator tool can draft it. After approval, the edit is applied to the live folder. Then either keep it (`msl keep --fixes …` makes the next version and marks entries applied) or try it first (saved automatically; later keep, or `undo`/`redo`).
+- **History and rollback.** `msl history` lists versions with fixes, the upstream revision, and feedback counted per version. `msl rollback <v>` restores that version as a new version and reopens the feedback that the undone versions fixed. It warns (and needs `--yes`) when that crosses an upstream merge. `--only` reverts a single version.
+- **Update.** `msl update <name>`:
+  1. Bring in the new upstream. For `skills-cli`, it runs `npx skills update`. For `git`, the user pulls as usual.
+  2. Record it on `upstream`, then put `mine` back in the live folder, so the user's version stays live.
+  3. If there are no refinements, fast-forward as the next version. Otherwise merge in a temporary worktree (`merge/`) for review: `msl diff --merge` and `--upstream`. The agent resolves conflicts by intent, then `--apply`, `--abort`, or `--take-upstream`.
+  If an installer runs directly instead, status shows `upstream-update` and the same flow picks it up.
 
-## 7. Next: versioning and the update lifecycle (agreed 2026-09-28, not built yet)
+## 7. Decisions and accepted limits (2026-09-28)
 
-This replaces the v1 data model in §5 (`base/`, `current/`, `changes.md`) once built.
-
-**One git repo per managed skill, two branches (the classic "vendor branch" pattern).**
-
-```
-~/.meta-skill-loop/skills/grilling/git/       git dir, kept in the workspace
-    working tree = the live skill folder       (e.g. ~/.claude/skills/grilling; nothing is moved)
-
-  upstream:  U1 (abc123) ───────────── U2 (def456)     pristine published versions only
-               \                         \
-  mine:         v1 ── v2 ── v3 ─────────── v4 (merge)   what the tools load = upstream + your refinements
-```
-
-- The live folder always holds `mine`. Changes are never applied to upstream, and there is nothing to re-point. `upstream` exists only for skills someone else publishes.
-- The git dir lives outside the skill folder, so tools never see a `.git`, and installers can overwrite files without destroying history.
-- Feedback stays as plain files next to the git dir. The workspace-wide git repo goes away.
-
-| Need | Git feature |
-|---|---|
-| a change being tried (uncommitted) | working-tree changes |
-| a version (v1, v2, …) | commit on `mine`, tag `vN` |
-| why a version exists | commit trailers: `Fixes: fb-k3x9-001` |
-| protect a trial from being overwritten | `git stash` (refine stores the trial as a stash entry) |
-| undo a trial | `git restore` |
-| undo one change / go back to a version | `git revert vN` / check out vN's files and commit |
-| upstream released something new | new commit on `upstream`, trailer `Upstream-Rev: <rev>` |
-| reconcile | `git merge upstream` into `mine`, done in a temporary worktree so the live skill never holds conflict markers |
-| history | `git log` on `mine` |
-
-**Commands.** Users speak; agents call `msl`.
-
-| Say | `msl` | Version? |
-|---|---|---|
-| "feedback on X: …" | `feedback` (renamed from `log`) | no |
-| "status" | `status` | no |
-| "what changed?" | `diff` | no |
-| "keep it" | `commit -m … --fixes …` | yes |
-| "undo that" | `restore` | no |
-| "show versions" | `history` (with feedback counted per version, to spot regressions) | no |
-| "undo v2" / "go back to v1" | `rollback` (revert one version, or restore one; reopens the feedback those versions fixed; warns when crossing an upstream merge) | yes |
-| "update X" | `update`: runs the installer into a scratch dir, records it on `upstream`, merges, shows the diff, applies only after approval | yes |
-
-**Who else writes the folder** (decides how an upstream update is detected):
-
-| Skill lives in | Other writer | Detection |
-|---|---|---|
-| a plain folder you made | nobody | no upstream; any change is yours (uncommitted until "keep it") |
-| a folder installed by the `skills` CLI | `npx skills update` | lock-file revision differs from the last `Upstream-Rev` |
-| a git repo (work repo, pack repo) | `git pull`, teammates | the last commit touching the folder changed. Your own repo: refinements also become commits there. A team repo: treated as upstream, and good changes go back as PRs. |
-| anything else (plugins, downloads) | unknown | ask the user |
-
-**Updates.** An installer run directly (`npx skills update`, `git pull`) replaces the live files at once, so the new upstream version is what runs until reconciled. Your versions stay safe on `mine`. meta-skill-loop can't intercept this, since there are no cross-tool hooks. It detects the change on the next `msl` call of any kind, then offers to reconcile, restore your version, or take upstream. The recommended path is `meta-skill-loop update X`, which reviews the update before anything goes live.
-
-**Feedback ids:** `fb-<workspace id>-<seq>`, e.g. `fb-k3x9-001`. The workspace id is random and created once. Ids stay ordered locally and unique across workspaces.
-
-**Designed for, not built:**
-- A team feedback layer: an opt-in shared repo, explicit sharing, and views that merge local and team entries.
-- Syncing several machines.
-- A richer review UI than the chat diff.
-
-**Known limits, accepted:**
-- Merging prose is fuzzy: the LLM proposes and the human validates.
-- Trying a change affects every session at once.
-- Change detection happens at `msl` calls, not when a skill is used.
-- Copies in several tool folders are mirrored from the primary copy.
-- A moved skill folder must be re-pointed.
-
-**Open question:** keep skills in place (A, recommended) or move them into a central store and deploy copies (B)? See `docs/handoff.md`.
+- **Skills stay in place (no central store).** Considered: moving skills into the workspace and deploying copies. Rejected: two copies of everything, a deploy step, edits made in the tool's own UI getting overwritten, and it couldn't cover skills in team repos. Review-before-update is achieved instead through `msl update`.
+- **meta-skill-loop never edits a skill except to apply an approved change.** The v1 "nudge" line was removed in favor of one line in the tool's own rules.
+- **Accepted limits:**
+  - Merging prose is fuzzy: the LLM proposes and the human validates.
+  - A live edit applies to every session at once.
+  - Change detection happens at `msl` calls, not when a skill is used; that isn't possible portably.
+  - Installers run outside `msl update` put upstream live until reconciled.
+  - A moved skill folder must be re-added.
+- **Designed for, not built:**
+  - A team feedback layer: an opt-in shared repo, explicit sharing, and views merging local and team entries. Feedback ids are already unique across workspaces for this.
+  - Syncing several machines.
+  - A richer review UI than the chat diff.
 
 ## 8. Roadmap
 
-- **v1 (built):** everything in §1–6.
-- **v1.1:** §7: per-skill git versioning, the review-gated `update`, rollback, the new ids.
-- **v2:** `contribute`: a refinement becomes a redacted PR to the skill's source.
+- **v1:** capture, add/scan, status, refine with approval.
+- **v1.1 (current):** per-skill git versions, keep/undo/redo, history, rollback, review-gated `update`, unique feedback ids, no edits to skills except approved ones.
+- **v2:** `contribute`: a refinement becomes a PR (or issue) to the skill's source, with redacted evidence.
 - **v3, learn automatically:** observers write `origin: observed` candidates for triage, measured against the explicit entries.
 
 ## 9. Prior art (2026-09)

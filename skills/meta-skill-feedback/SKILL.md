@@ -5,32 +5,34 @@ description: Log feedback about how a skill behaved, with evidence, so it can be
 
 # meta-skill-feedback
 
-Capture one piece of feedback about a skill as a structured entry, then get back to what the user was doing. Capturing never changes the skill; improving it is a separate, deliberate step (meta-skill-refine).
+Capture one piece of feedback about a skill as a structured entry, then get back to what the user was doing. Capturing never changes the skill. Improving it is a separate, deliberate step (meta-skill-refine).
 
-Run `msl` as `~/.meta-skill-loop/bin/msl`. If it's missing, tell the user meta-skill-loop isn't installed and show them the feedback entry you would have logged, so nothing is lost.
+Run `msl` as `~/.meta-skill-loop/bin/msl`. If it's missing, tell the user meta-skill-loop isn't installed, and show them the feedback entry you would have logged so nothing is lost.
 
 ## Steps
 
-1. **Identify the skill.** Usually it's the skill you used earlier in this conversation. If more than one skill was involved, or none obviously was, ask which one. Use the skill's `name` from its frontmatter. If that skill only hands off to another skill (for example, "use the grilling skill"), log the feedback on the skill whose instructions actually produced the behavior.
+1. **Identify the skill.** Usually it's the skill you used earlier in this conversation.
+   - If more than one skill was involved, or none obviously was, ask which one. Use the skill's `name` from its frontmatter.
+   - If that skill only hands off to another skill (for example, "use the grilling skill"), log the feedback on the skill whose instructions actually produced the behavior.
 
-2. **Make sure it's managed.** Run `msl status <name>`. If it isn't listed, run `msl add <name>` and tell the user in one line that it's now managed.
+2. **Make sure it's managed.** Run `msl status <name>`. If it isn't managed, run `msl add <name>` and tell the user in one line that it's now managed. The skill itself is not modified.
 
-3. **Write the entry.** Use short bullet points and only the facts that will help someone improve the skill later:
+3. **Write the entry.** Use short bullet points with only the facts that will help someone improve the skill later:
    - `asked:` what the user asked for when the skill ran (quote briefly)
    - `observed:` what the skill made you do that was wrong or unwanted; be concrete
    - `expected:` what the user wanted instead
    - `user said:` the user's own words, verbatim, if they gave feedback in words
-   - `evidence:` the smallest excerpt that shows the problem (a few lines of output, a file:line, a command). Trim it.
+   - `evidence:` the smallest excerpt that shows the problem (a few lines of output, a file:line, the instruction in the skill that caused it). Trim it.
 
    Leave out secrets, credentials, tokens, customer data, and anything the user wouldn't want stored. When unsure, summarize instead of quoting.
 
-4. **Log it.** Pipe the bullets to `msl log` and set the flags:
-   - `--severity`: `nit` (cosmetic), `annoying` (worked but badly), or `wrong` (incorrect result or harmful action)
-   - `--tool`: the agent you're running in: `cursor`, `codex`, `claude-code`, or another name
-   - `--project`: only if the current folder name isn't a good project name
+4. **Log it.** Pipe the bullets to `msl feedback add` with these flags:
+   - `--severity`: `nit` (cosmetic), `annoying` (worked but badly), or `wrong` (incorrect result or harmful action).
+   - `--tool`: the agent you're running in: `cursor`, `codex`, `claude-code`, or another name.
+   - `--project`: only if the current folder name isn't a good project name.
 
    ```sh
-   ~/.meta-skill-loop/bin/msl log pr-review --severity annoying --tool cursor <<'EOF'
+   ~/.meta-skill-loop/bin/msl feedback add pr-review --severity annoying --tool cursor <<'EOF'
    - asked: "review PR 482"
    - observed: listed 30 style nits and missed the unhandled retry error
    - expected: correctness issues first; style only if asked
@@ -39,11 +41,13 @@ Run `msl` as `~/.meta-skill-loop/bin/msl`. If it's missing, tell the user meta-s
    EOF
    ```
 
-5. **Confirm and continue.** In one line, report the entry id and the skill ("Logged fb-0012 for pr-review."). If the user also wants the current task redone the right way, do it now. The feedback is recorded either way.
+   msl records which version of the skill the feedback is about.
+
+5. **Confirm and continue.** Report the entry id and the skill in one line ("Logged fb-k3x9-012 for pr-review."). If the user also wants the current task redone the right way, do it now. The feedback is recorded either way.
 
 ## Notes
 
-- One entry per distinct problem. If the user gives several unrelated complaints, log several entries.
-- If the same problem was already logged (`msl show <name>` lists open entries), say so. Only log it again if there's new evidence, since repeated entries show a pattern.
-- If writing is blocked (a sandbox, or a permission prompt the user declines), show the full `msl log …` command so the user can run it.
-- Don't fix the skill here, even if the fix looks obvious. Suggest `refine <skill>` instead.
+- Log one entry per distinct problem. If the user gives several unrelated complaints, log several entries.
+- If the same problem was already logged (`msl feedback list <name>`), say so. Only log it again if there's new evidence; repeated entries show a pattern.
+- If writing is blocked (a sandbox, or a permission prompt the user declines), show the full `msl feedback add …` command so the user can run it.
+- Don't fix the skill here, even if the fix looks obvious. Suggest "refine <skill>" instead.

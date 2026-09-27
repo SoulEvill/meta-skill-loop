@@ -15,7 +15,12 @@ check() { # description, command...
   shift
   if out="$("$@" 2>&1)"; then ok "$d"; else bad "$d" "$out"; fi
 }
-contains() { printf '%s' "$1" | grep -qF -- "$2"; }
+has() { # description, haystack, needle
+  if printf '%s' "$2" | grep -qF -- "$3"; then ok "$1"; else bad "$1" "$2"; fi
+}
+lacks() {
+  if printf '%s' "$2" | grep -qF -- "$3"; then bad "$1" "$2"; else ok "$1"; fi
+}
 
 new_home() {
   HOME="$(mktemp -d)"
@@ -30,133 +35,217 @@ skill() { # dir name [body]
   printf -- '---\nname: %s\ndescription: test skill %s\n---\n\n# %s\n%s\n' "$2" "$2" "$2" "${3:-Do the thing.}" > "$1/SKILL.md"
 }
 
+state_of() { $MSL status "$1" | awk -v n="$1" '$1 == n { print $6 }'; }
+version_of() { $MSL status "$1" | awk -v n="$1" '$1 == n { print $3 }'; }
+fb() { printf 'fb-%s-%s' "$(awk '/^id: /{ print $2 }' "$HOME/.meta-skill-loop/workspace.yaml")" "$1"; }
+
+lock() { # name rev
+  mkdir -p "$HOME/.agents"
+  printf '{"version":3,"skills":{"%s":{"source":"acme/skills","sourceUrl":"https://github.com/acme/skills.git","skillPath":"skills/%s/SKILL.md","skillFolderHash":"%s"}}}' \
+    "$1" "$1" "$2" > "$HOME/.agents/.skill-lock.json"
+}
+
 echo "install"
 new_home
 skill "$HOME/.cursor/skills/grill-me" grill-me "Ask hard questions."
 mkdir -p "$HOME/.claude"
-out="$($SH "$REPO/install.sh" --claude)"
+"$SH" "$REPO/install.sh" --claude >/dev/null
 check "copies core skills to ~/.agents/skills" test -f "$HOME/.agents/skills/meta-skill-feedback/SKILL.md"
 check "copies core skills to ~/.claude/skills" test -f "$HOME/.claude/skills/meta-skill-refine/SKILL.md"
 check "installs msl into the workspace" test -x "$HOME/.meta-skill-loop/bin/msl"
-check "workspace is a git repo" test -d "$HOME/.meta-skill-loop/.git"
-check "core skills are managed as upstream" grep -q '^ownership: upstream' "$HOME/.meta-skill-loop/skills/meta-skill-loop/skill.yaml"
-check "core skills get no nudge" sh -c "! grep -q 'meta-skill-feedback\` skill' '$HOME/.agents/skills/meta-skill-loop/SKILL.md'"
-check "reinstall is idempotent" "$SH" "$REPO/install.sh" --claude
-n="$(grep -c '^## ch-' "$HOME/.meta-skill-loop/skills/meta-skill-loop/changes.md")"
-check "reinstall without changes records nothing" test "$n" = 1
+check "workspace has an id" grep -Eq '^id: [a-z0-9]{4}$' "$HOME/.meta-skill-loop/workspace.yaml"
+check "core skills are managed as framework" grep -q '^kind: framework' "$HOME/.meta-skill-loop/skills/meta-skill-loop/skill.yaml"
+has "core skills start at v1" "$(version_of meta-skill-loop)" "v1"
+"$SH" "$REPO/install.sh" --claude >/dev/null
+has "reinstall without changes adds no version" "$(version_of meta-skill-loop)" "v1"
+has "print the global feedback rule" "$("$SH" "$REPO/install.sh")" "offer to log it with the meta-skill-feedback skill"
 
 echo "scan and add"
-out="$($MSL scan)"
-if contains "$out" "new      grill-me"; then ok "scan lists unmanaged skill"; else bad "scan lists unmanaged skill" "$out"; fi
-out="$($MSL add grill-me)"
-if contains "$out" "added grill-me (own)"; then ok "add defaults to own"; else bad "add defaults to own" "$out"; fi
-check "nudge inserted after frontmatter" sh -c "sed -n 6p '$HOME/.cursor/skills/grill-me/SKILL.md' | grep -q 'meta-skill-feedback'"
-check "base snapshot is the pristine skill" sh -c "! grep -q meta-skill-feedback '$HOME/.meta-skill-loop/skills/grill-me/base/SKILL.md'"
-check "current snapshot includes nudge" grep -q meta-skill-feedback "$HOME/.meta-skill-loop/skills/grill-me/current/SKILL.md"
+has "scan lists unmanaged skill" "$($MSL scan)" "new      grill-me"
+before="$(cat "$HOME/.cursor/skills/grill-me/SKILL.md")"
+has "add a plain folder as local" "$($MSL add grill-me)" "added grill-me (local) as v1"
+check "add leaves the skill file untouched" test "$(cat "$HOME/.cursor/skills/grill-me/SKILL.md")" = "$before"
+check "no .git inside the skill folder" test ! -e "$HOME/.cursor/skills/grill-me/.git"
 check "adding twice fails" sh -c "! $MSL add grill-me"
 check "add unknown skill fails" sh -c "! $MSL add nope"
 check "status of unmanaged skill fails" sh -c "! $MSL status nope"
+has "state clean after add" "$(state_of grill-me)" "clean"
 
-echo "log"
-printf -- '- asked: grill me\n- observed: 14 questions\n' | $MSL log grill-me --tool cursor --severity annoying >/dev/null
-f="$HOME/.meta-skill-loop/skills/grill-me/feedback/fb-0001.md"
-check "entry written" test -f "$f"
-check "entry has open status" grep -q '^status: open' "$f"
-check "entry has explicit origin" grep -q '^origin: explicit' "$f"
-check "entry records tool" grep -q '^tool: cursor' "$f"
-check "entry records skill hash" grep -q '^skill_hash: [0-9a-f]\{12\}' "$f"
-printf -- '- observed: rambled\n' | $MSL log grill-me --origin observed >/dev/null
-f2="$HOME/.meta-skill-loop/skills/grill-me/feedback/fb-0002.md"
+echo "feedback"
+printf -- '- asked: grill me\n- observed: 14 questions\n' | $MSL feedback add grill-me --tool cursor --severity annoying >/dev/null
+f1="$HOME/.meta-skill-loop/skills/grill-me/feedback/$(fb 001).md"
+check "entry id is workspace id + sequence" test -f "$f1"
+check "entry is open" grep -q '^status: open' "$f1"
+check "entry records the version" grep -q '^version: v1$' "$f1"
+check "entry records tool" grep -q '^tool: cursor' "$f1"
+printf -- '- observed: rambled\n' | $MSL feedback add grill-me --origin observed >/dev/null
+f2="$HOME/.meta-skill-loop/skills/grill-me/feedback/$(fb 002).md"
 check "observed entry is a candidate" grep -q '^status: candidate' "$f2"
-check "observed entry defaults to medium confidence" grep -q '^confidence: medium' "$f2"
-check "empty body rejected" sh -c "! printf '' | $MSL log grill-me"
-check "bad severity rejected" sh -c "! echo x | $MSL log grill-me --severity huge"
-check "log on unmanaged skill rejected" sh -c "! echo x | $MSL log nope"
-out="$($MSL status)"
-if printf '%s\n' "$out" | grep -Eq '^grill-me +own +1 +1 +clean'; then ok "status counts open and triage"; else bad "status counts open and triage" "$out"; fi
+check "empty body rejected" sh -c "! printf '' | $MSL feedback add grill-me"
+check "bad severity rejected" sh -c "! echo x | $MSL feedback add grill-me --severity huge"
+check "feedback on unmanaged skill rejected" sh -c "! echo x | $MSL feedback add nope"
+has "list shows open and candidate" "$($MSL feedback list grill-me)" "status: candidate"
+$MSL feedback mark "$(fb 002)" declined -m "one-off" >/dev/null
+check "mark sets status and reason" grep -q '^resolution: one-off' "$f2"
 
-echo "refine bookkeeping"
+echo "edit, keep, undo, redo"
 echo "Ask at most 5 questions per round." >> "$HOME/.cursor/skills/grill-me/SKILL.md"
-out="$($MSL status grill-me)"
-if contains "$out" changed; then ok "hand edit shows as changed"; else bad "hand edit shows as changed" "$out"; fi
-$MSL commit grill-me -m "cap questions" --fixes fb-0001 >/dev/null
-check "commit marks feedback applied" grep -q '^status: applied' "$f"
-check "commit links change id" grep -q '^resolution: ch-0002' "$f"
-check "commit logs change" grep -q 'fixes: fb-0001' "$HOME/.meta-skill-loop/skills/grill-me/changes.md"
-out="$($MSL status grill-me)"
-if contains "$out" clean; then ok "state clean after commit"; else bad "state clean after commit" "$out"; fi
-$MSL mark fb-0002 declined -m "one-off" >/dev/null
-check "mark sets status" grep -q '^status: declined' "$f2"
-check "mark records reason" grep -q '^resolution: one-off' "$f2"
-check "commit with unknown feedback id fails" sh -c "! $MSL commit grill-me -m x --fixes fb-9999"
-cp "$HOME/.meta-skill-loop/skills/grill-me/base/SKILL.md" "$HOME/.cursor/skills/grill-me/SKILL.md"
-out="$($MSL status grill-me)"
-if contains "$out" reverted; then ok "overwrite by upstream shows as reverted"; else bad "overwrite by upstream shows as reverted" "$out"; fi
-out="$($MSL diff grill-me)"
-if contains "$out" "-Ask at most 5 questions per round."; then ok "diff shows what an update removed"; else bad "diff shows what an update removed" "$out"; fi
-out="$($MSL diff grill-me --refinements)"
-if contains "$out" "+Ask at most 5 questions per round." && contains "$out" "+> If the user gives feedback"; then ok "diff --refinements shows local changes vs upstream"; else bad "diff --refinements shows local changes vs upstream" "$out"; fi
-cp "$HOME/.meta-skill-loop/skills/grill-me/current/SKILL.md" "$HOME/.cursor/skills/grill-me/SKILL.md"
-out="$($MSL diff grill-me)"
-if contains "$out" "(no differences)"; then ok "diff reports no differences when restored"; else bad "diff reports no differences when restored" "$out"; fi
-cp "$HOME/.meta-skill-loop/skills/grill-me/base/SKILL.md" "$HOME/.cursor/skills/grill-me/SKILL.md"
-$MSL nudge grill-me >/dev/null
-check "nudge re-inserts the line" grep -q 'meta-skill-feedback' "$HOME/.cursor/skills/grill-me/SKILL.md"
-$MSL nudge grill-me >/dev/null
-check "nudge is idempotent" test "$(grep -c 'meta-skill-feedback' "$HOME/.cursor/skills/grill-me/SKILL.md")" = 1
-out="$($MSL show grill-me --all)"
-if contains "$out" "cap questions" && contains "$out" "one-off"; then ok "show includes history and feedback"; else bad "show includes history and feedback" "$out"; fi
+has "edit shows as changed" "$(state_of grill-me)" "changed"
+has "version marked as having edits" "$(version_of grill-me)" "v1*"
+has "diff shows the edit" "$($MSL diff grill-me)" "+Ask at most 5 questions per round."
+printf -- '- x\n' | $MSL feedback add grill-me >/dev/null
+check "feedback during edits records +edits" grep -q '^version: v1+edits$' "$HOME/.meta-skill-loop/skills/grill-me/feedback/$(fb 003).md"
+$MSL feedback mark "$(fb 003)" declined >/dev/null
+has "keep creates v2" "$($MSL keep grill-me -m "cap questions" --fixes "$(fb 001)")" "v2 kept"
+check "keep marks feedback applied" grep -q '^status: applied' "$f1"
+check "keep links the version" grep -q '^resolution: v2' "$f1"
+has "clean after keep" "$(state_of grill-me)" "clean"
+check "keep with nothing to keep fails" sh -c "! $MSL keep grill-me -m x"
+echo "bad edit" >> "$HOME/.cursor/skills/grill-me/SKILL.md"
+$MSL undo grill-me >/dev/null
+lacks "undo discards the edit" "$(cat "$HOME/.cursor/skills/grill-me/SKILL.md")" "bad edit"
+$MSL redo grill-me >/dev/null
+has "redo brings it back" "$(cat "$HOME/.cursor/skills/grill-me/SKILL.md")" "bad edit"
+$MSL undo grill-me >/dev/null
+mkdir -p "$HOME/.cursor/skills/grill-me/references"
+echo "extra" > "$HOME/.cursor/skills/grill-me/references/new.md"
+$MSL undo grill-me >/dev/null
+check "undo removes new files too" test ! -e "$HOME/.cursor/skills/grill-me/references/new.md"
+
+echo "history and rollback"
+out="$($MSL history grill-me)"
+has "history lists versions" "$out" "cap questions [fixes $(fb 001)]"
+has "history marks live version" "$out" "* v2"
+has "history counts feedback per version" "$out" "v1     $(date -u +%Y-%m-%d) 3"
+has "diff between versions" "$($MSL diff grill-me v1 v2)" "+Ask at most 5 questions per round."
+$MSL rollback grill-me v1 >/dev/null
+lacks "rollback restores old content" "$(cat "$HOME/.cursor/skills/grill-me/SKILL.md")" "Ask at most 5"
+has "rollback is a new version" "$(version_of grill-me)" "v3"
+check "rollback reopens feedback the undone versions fixed" grep -q '^status: open' "$f1"
+sed 's/^# grill-me$/# Grill me (A)/' "$HOME/.cursor/skills/grill-me/SKILL.md" > "$HOME/x" && mv "$HOME/x" "$HOME/.cursor/skills/grill-me/SKILL.md"
+$MSL keep grill-me -m "retitle A" >/dev/null
+echo "Line B." >> "$HOME/.cursor/skills/grill-me/SKILL.md"; $MSL keep grill-me -m "add B" >/dev/null
+$MSL rollback grill-me v4 --only >/dev/null
+out="$(cat "$HOME/.cursor/skills/grill-me/SKILL.md")"
+if printf '%s' "$out" | grep -q "Line B." && ! printf '%s' "$out" | grep -q "(A)"; then ok "rollback --only undoes just that version"; else bad "rollback --only undoes just that version" "$out"; fi
+echo "dirty" >> "$HOME/.cursor/skills/grill-me/SKILL.md"
+check "rollback refuses with uncommitted edits" sh -c "! $MSL rollback grill-me v1"
+$MSL undo grill-me >/dev/null
 
 echo "copies"
 skill "$HOME/.agents/skills/multi" multi
 skill "$HOME/.claude/skills/multi" multi
-out="$($MSL add multi)"
-if contains "$out" ".claude/skills/multi"; then ok "add records every installed copy"; else bad "add records every installed copy" "$out"; fi
+has "add records every installed copy" "$($MSL add multi)" ".claude/skills/multi"
 echo "extra" >> "$HOME/.agents/skills/multi/SKILL.md"
-$MSL commit multi -m "extra" >/dev/null
-check "commit propagates to other copies" grep -q extra "$HOME/.claude/skills/multi/SKILL.md"
+$MSL keep multi -m extra >/dev/null
+check "keep propagates to other copies" grep -q extra "$HOME/.claude/skills/multi/SKILL.md"
 echo "drift" >> "$HOME/.claude/skills/multi/SKILL.md"
-out="$($MSL status multi)"
-if contains "$out" copies-differ; then ok "diverged copy detected"; else bad "diverged copy detected" "$out"; fi
+has "diverged copy detected" "$(state_of multi)" "copies-differ"
+$MSL keep multi -m sync >/dev/null
+lacks "keep re-syncs copies without a new version" "$(cat "$HOME/.claude/skills/multi/SKILL.md")" "drift"
+has "no version for a pure copy sync" "$(version_of multi)" "v2"
 
-echo "project skills and ownership"
-mkdir -p "$HOME/work/app" && (cd "$HOME/work/app" && git init -q)
-skill "$HOME/work/app/.cursor/skills/deploy" deploy
-out="$(cd "$HOME/work/app" && $MSL add deploy)"
-if contains "$out" "work/app/.cursor/skills/deploy"; then ok "finds project skills from inside the repo"; else bad "finds project skills from inside the repo" "$out"; fi
-$MSL set deploy ownership upstream >/dev/null
-check "set ownership" grep -q '^ownership: upstream' "$HOME/.meta-skill-loop/skills/deploy/skill.yaml"
-check "set rejects bad ownership" sh -c "! $MSL set deploy ownership mine"
+echo "skills CLI upstream: update, merge, conflicts"
+skill "$HOME/.agents/skills/grilling" grilling "Ask the whole frontier in one round.
+Keep going until done."
+lock grilling aaaaaaaaaaaa
+has "add detects the skills CLI" "$($MSL add grilling)" "(skills-cli, from https://github.com/acme/skills.git (skills/grilling))"
+sed 's/Ask the whole frontier in one round./Ask at most 3 questions per round./' "$HOME/.agents/skills/grilling/SKILL.md" > "$HOME/x" && mv "$HOME/x" "$HOME/.agents/skills/grilling/SKILL.md"
+$MSL keep grilling -m "3 questions" >/dev/null
+# The skills CLI installs a new upstream version over the live folder.
+skill "$HOME/.agents/skills/grilling" grilling "Ask the whole frontier in one round.
+Keep going until done.
+Summarize at the end."
+lock grilling bbbbbbbbbbbb
+has "direct installer update detected" "$(state_of grilling)" "upstream-update"
+check "keep refuses an upstream version" sh -c "! $MSL keep grilling -m x"
+out="$($MSL update grilling --no-fetch)"
+has "update records upstream and prepares a merge" "$out" "merged with your version cleanly"
+has "live folder is back on your version during review" "$(cat "$HOME/.agents/skills/grilling/SKILL.md")" "Ask at most 3 questions per round."
+lacks "live folder does not yet have upstream" "$(cat "$HOME/.agents/skills/grilling/SKILL.md")" "Summarize at the end."
+has "diff --merge shows what would change" "$($MSL diff grilling --merge)" "+Summarize at the end."
+check "a second update waits for the pending merge" sh -c "! $MSL update grilling --no-fetch"
+has "apply makes the next version" "$($MSL update grilling --apply)" "v3: grilling now runs upstream bbbbbbbbbbbb with your refinements"
+out="$(cat "$HOME/.agents/skills/grilling/SKILL.md")"
+if printf '%s' "$out" | grep -q "Ask at most 3" && printf '%s' "$out" | grep -q "Summarize at the end."; then ok "merged skill has upstream change and your refinement"; else bad "merged skill has upstream change and your refinement" "$out"; fi
+has "history shows the upstream merge" "$($MSL history grilling)" "took upstream bbbbbbbbbbbb"
+has "up to date afterwards" "$($MSL update grilling --no-fetch)" "up to date"
+# Reinstalling the same upstream version wipes your refinements from the folder.
+skill "$HOME/.agents/skills/grilling" grilling "Ask the whole frontier in one round.
+Keep going until done.
+Summarize at the end."
+has "known upstream put back is detected" "$(state_of grilling)" "upstream-live"
+$MSL update grilling --no-fetch >/dev/null
+has "update restores your version" "$(cat "$HOME/.agents/skills/grilling/SKILL.md")" "Ask at most 3 questions per round."
+# Conflicting upstream change.
+skill "$HOME/.agents/skills/grilling" grilling "Ask exactly one question per round.
+Keep going until done.
+Summarize at the end."
+lock grilling cccccccccccc
+has "conflicting update is reported" "$($MSL update grilling --no-fetch)" "with conflicts in"
+check "apply refuses unresolved conflicts" sh -c "! $MSL update grilling --apply"
+has "abort drops the merge" "$($MSL update grilling --abort)" "dropped the pending merge"
+has "unmerged upstream is reported" "$($MSL status grilling)" "not merged into your version yet"
+has "take-upstream replaces your version" "$($MSL update grilling --take-upstream)" "as published"
+has "live is now plain upstream" "$(cat "$HOME/.agents/skills/grilling/SKILL.md")" "Ask exactly one question per round."
 
-echo "skills CLI lock file"
-if command -v node >/dev/null 2>&1; then
-  skill "$HOME/.agents/skills/pr-review" pr-review
-  printf '{"version":3,"skills":{"pr-review":{"source":"acme/team-skills","sourceUrl":"https://github.com/acme/team-skills.git","skillPath":"skills/pr-review/SKILL.md"}}}' > "$HOME/.agents/.skill-lock.json"
-  out="$($MSL add pr-review)"
-  if contains "$out" "upstream, from https://github.com/acme/team-skills.git (skills/pr-review)"; then ok "source and ownership from lock file"; else bad "source and ownership from lock file" "$out"; fi
-else
-  echo "  skip (node not installed)"
-fi
+echo "fast-forward when you have no refinements"
+skill "$HOME/.agents/skills/plain" plain "v one"
+lock plain 111111111111
+$MSL add plain >/dev/null
+skill "$HOME/.agents/skills/plain" plain "v two"
+lock plain 222222222222
+has "update without refinements applies directly" "$($MSL update plain --no-fetch)" "you had no refinements to merge"
+has "fast-forwarded content is live" "$(cat "$HOME/.agents/skills/plain/SKILL.md")" "v two"
+check "own skills have no upstream" sh -c "! $MSL update grill-me"
 
-echo "remove"
+echo "skill inside a git repo"
+mkdir -p "$HOME/work" && git -C "$HOME/work" init -q
+skill "$HOME/work/.cursor/skills/deploy" deploy "Deploy carefully."
+git -C "$HOME/work" add -A && git -C "$HOME/work" -c user.name=t -c user.email=t@t commit -qm init
+has "add detects a git repo" "$(cd "$HOME/work" && $MSL add deploy)" "added deploy (git"
+echo "Run the smoke test first." >> "$HOME/work/.cursor/skills/deploy/SKILL.md"
+$MSL keep deploy -m "smoke test" >/dev/null
+git -C "$HOME/work" stash -q
+sed 's/^# deploy$/# deploy (announce in the channel)/' "$HOME/work/.cursor/skills/deploy/SKILL.md" > "$HOME/x" && mv "$HOME/x" "$HOME/work/.cursor/skills/deploy/SKILL.md"
+git -C "$HOME/work" -c user.name=t -c user.email=t@t commit -qam "team change"
+has "a pulled repo change is detected" "$(state_of deploy)" "upstream-update"
+$MSL update deploy >/dev/null
+$MSL update deploy --apply >/dev/null
+out="$(cat "$HOME/work/.cursor/skills/deploy/SKILL.md")"
+if printf '%s' "$out" | grep -q "smoke test" && printf '%s' "$out" | grep -q "announce in the channel"; then ok "repo change merged with your refinement"; else bad "repo change merged with your refinement" "$out"; fi
+
+echo "framework update through install.sh"
+fake="$(mktemp -d)"
+cp -R "$REPO/." "$fake/"
+rm -rf "$fake/.git"
+printf '\nNew upstream guidance.\n' >> "$fake/skills/meta-skill-feedback/SKILL.md"
+printf '\nNew refine guidance.\n' >> "$fake/skills/meta-skill-refine/SKILL.md"
+sed 's/^# meta-skill-refine$/# meta-skill-refine (My local tweak.)/' "$HOME/.agents/skills/meta-skill-refine/SKILL.md" > "$HOME/x" && mv "$HOME/x" "$HOME/.agents/skills/meta-skill-refine/SKILL.md"
+$MSL keep meta-skill-refine -m tweak >/dev/null
+out="$("$SH" "$fake/install.sh" --claude)"
+has "unrefined core skill is updated directly" "$(cat "$HOME/.agents/skills/meta-skill-feedback/SKILL.md")" "New upstream guidance."
+check "update reaches the other installed copy" grep -q "New upstream guidance." "$HOME/.claude/skills/meta-skill-feedback/SKILL.md"
+has "refined core skill asks for review" "$out" "has your refinements; review the upstream"
+has "refinement still live" "$(cat "$HOME/.agents/skills/meta-skill-refine/SKILL.md")" "My local tweak."
+$MSL update meta-skill-refine >/dev/null
+$MSL update meta-skill-refine --apply >/dev/null
+out="$(cat "$HOME/.agents/skills/meta-skill-refine/SKILL.md")"
+if printf '%s' "$out" | grep -q "My local tweak." && printf '%s' "$out" | grep -q "New refine guidance."; then ok "reviewed framework update keeps your tweak"; else bad "reviewed framework update keeps your tweak" "$out"; fi
+
+echo "remove and legacy workspace"
 skill "$HOME/.agents/skills/tmp-skill" tmp-skill
 orig="$(cat "$HOME/.agents/skills/tmp-skill/SKILL.md")"
 $MSL add tmp-skill >/dev/null
 $MSL remove tmp-skill >/dev/null
-check "remove restores the skill file exactly" test "$(cat "$HOME/.agents/skills/tmp-skill/SKILL.md")" = "$orig"
-check "remove leaves the skill in place" test -f "$HOME/.agents/skills/tmp-skill/SKILL.md"
+check "remove leaves the skill untouched" test "$(cat "$HOME/.agents/skills/tmp-skill/SKILL.md")" = "$orig"
 check "remove archives the data" sh -c "ls '$HOME/.meta-skill-loop/archive' | grep -q tmp-skill"
-printf -- '- x\n' | $MSL log grill-me >/dev/null
-check "ids stay unique" test -f "$HOME/.meta-skill-loop/skills/grill-me/feedback/fb-0003.md"
-
-echo "install keeps refinements"
-echo "my tweak" >> "$HOME/.agents/skills/meta-skill-refine/SKILL.md"
-$MSL commit meta-skill-refine -m tweak >/dev/null
-out="$($SH "$REPO/install.sh")"
-if contains "$out" "skip meta-skill-refine"; then ok "refined core skill is not overwritten"; else bad "refined core skill is not overwritten" "$out"; fi
-check "refinement still present" grep -q "my tweak" "$HOME/.agents/skills/meta-skill-refine/SKILL.md"
-
-check "workspace history recorded" test "$(git -C "$HOME/.meta-skill-loop" rev-list --count HEAD)" -gt 10
+check "remove stops managing it" sh -c "! $MSL status tmp-skill"
+printf -- '- y\n' | $MSL feedback add grill-me >/dev/null
+check "feedback ids keep increasing" test -f "$HOME/.meta-skill-loop/skills/grill-me/feedback/$(fb 004).md"
+legacy="$(mktemp -d)"
+mkdir -p "$legacy/.git"
+check "an old unreleased workspace is refused with instructions" sh -c "MSL_HOME='$legacy' $MSL status 2>&1 | grep -q 'older, unreleased build'"
 
 printf '\n%s passed, %s failed\n' "$pass" "$fail"
 [ "$fail" = 0 ]
