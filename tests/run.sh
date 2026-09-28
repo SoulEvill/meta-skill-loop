@@ -186,36 +186,32 @@ check "mark --fixed-in rejects an unknown version" fails msl feedback mark "$lfi
 msl revert grill-me "$lv" >/dev/null
 check "revert reopens feedback linked after the keep" grep -q '^status: open$' "$lf"
 
-echo "copies"
+echo "one folder per skill"
 skill "$HOME/.agents/skills/multi" multi
 skill "$HOME/.claude/skills/multi" multi
-has "add records every installed copy" "$(msl add multi)" ".claude/skills/multi"
 echo "SECRET=1" > "$HOME/.claude/skills/multi/.env"
-mkdir -p "$HOME/.claude/skills/multi/.git" && echo "ref: refs/heads/main" > "$HOME/.claude/skills/multi/.git/HEAD"
-echo "extra" >> "$HOME/.agents/skills/multi/SKILL.md"
-msl keep multi -m extra >/dev/null
-check "keep propagates to other copies" grep -q extra "$HOME/.claude/skills/multi/SKILL.md"
-check "syncing a copy keeps its dotfiles" test -f "$HOME/.claude/skills/multi/.env"
-check "and its own .git" test -f "$HOME/.claude/skills/multi/.git/HEAD"
-echo "edited in the other copy" >> "$HOME/.claude/skills/multi/SKILL.md"
-has "an edit in any copy is a live edit" "$(state_of multi)" "changed"
-has "diff shows an edit made in the other copy" "$(msl diff multi)" "+edited in the other copy"
-has "keep of an edit made in the other copy" "$(msl keep multi -m other)" "v3 kept"
-check "that edit reaches every copy" grep -q "edited in the other copy" "$HOME/.agents/skills/multi/SKILL.md"
-check "and is kept, not overwritten" grep -q "edited in the other copy" "$HOME/.claude/skills/multi/SKILL.md"
-echo "edit A" >> "$HOME/.agents/skills/multi/SKILL.md"
-echo "edit B" >> "$HOME/.claude/skills/multi/SKILL.md"
-has "copies edited differently are a conflict" "$(state_of multi)" "copies-differ"
-check "keep refuses to pick a copy by itself" fails msl keep multi -m x
-check "discard refuses too (it could save only one copy)" fails msl discard multi
-check "both copies keep their edits" grep -q "edit B" "$HOME/.claude/skills/multi/SKILL.md"
-msl keep multi -m "take B" --from "$HOME/.claude/skills/multi" >/dev/null
-check "keep --from takes the chosen copy" grep -q "edit B" "$HOME/.agents/skills/multi/SKILL.md"
-has "the chosen copy is the new version" "$(version_of multi)" "v4"
-rm -rf "$HOME/.claude/skills/multi"
-has "a deleted copy is not a missing skill" "$(state_of multi)" "clean"
+out="$(msl add multi)"
+has "the real folder is the one in ~/.agents/skills" "$out" "  ~/.agents/skills/multi"
+has "an identical copy in another tool folder is offered a link" "$out" "msl link multi"
+check "adding never touches the copy" test -f "$HOME/.claude/skills/multi/.env"
+has "status points out the separate copy" "$(msl status multi)" "is a separate copy, not a link"
+has "link replaces the copy with a link" "$(msl link multi)" "linked ~/.claude/skills/multi"
+check "the tool folder now links to the one folder" test -L "$HOME/.claude/skills/multi"
+has "the copy is set aside, not deleted" "$(find "$HOME/.meta-skill-loop/archive/copies" -name .env)" "multi-"
+has "linking again has nothing to do" "$(msl link multi)" "already loads"
+echo "edited through Claude Code" >> "$HOME/.claude/skills/multi/SKILL.md"
+has "an edit through any tool's folder is a live edit" "$(state_of multi)" "changed"
+msl keep multi -m "tool edit" >/dev/null
+check "every tool loads the kept version" grep -q "edited through Claude Code" "$HOME/.agents/skills/multi/SKILL.md"
+lacks "nothing to flag once linked" "$(msl status multi)" "separate copy"
+rm "$HOME/.claude/skills/multi" && cp -R "$HOME/.agents/skills/multi" "$HOME/.claude/skills/multi"
+has "a copy that replaced the link (a reinstall) is flagged" "$(msl status multi)" "is a separate copy, not a link"
+msl link multi >/dev/null
+check "and linked again" test -L "$HOME/.claude/skills/multi"
+rm "$HOME/.claude/skills/multi"
+has "a removed link doesn't matter" "$(state_of multi)" "clean"
 rm -rf "$HOME/.agents/skills/multi"
-has "all copies deleted is missing" "$(state_of multi)" "missing"
+has "the folder deleted is missing" "$(state_of multi)" "missing"
 
 echo "same name, different skills"
 mkdir -p "$HOME/team/.cursor/skills" && (cd "$HOME/team" && git init -q)
@@ -241,7 +237,7 @@ skill "$HOME/.agents/skills/grilling" grilling "Ask the whole frontier in one ro
 Keep going until done.
 Summarize at the end."
 lock grilling bbbbbbbbbbbb
-has "direct installer update detected" "$(state_of grilling)" "upstream-update"
+has "direct installer update detected" "$(state_of grilling)" "upstream"
 check "keep refuses an upstream version" fails msl keep grilling -m x
 out="$(msl update grilling --no-fetch)"
 has "update records upstream and prepares a merge" "$out" "merged with your version cleanly"
@@ -260,7 +256,7 @@ has "up to date afterwards" "$(msl update grilling --no-fetch)" "up to date"
 skill "$HOME/.agents/skills/grilling" grilling "Ask the whole frontier in one round.
 Keep going until done.
 Summarize at the end."
-has "known upstream put back is detected" "$(state_of grilling)" "upstream-live"
+has "known upstream put back is detected" "$(state_of grilling)" "upstream"
 msl update grilling --no-fetch >/dev/null
 has "update restores your version" "$(cat "$HOME/.agents/skills/grilling/SKILL.md")" "Ask at most 3 questions per round."
 # Conflicting upstream change.
@@ -300,25 +296,27 @@ echo "skill inside a git repo"
 mkdir -p "$HOME/work" && git -C "$HOME/work" init -q
 skill "$HOME/work/.cursor/skills/deploy" deploy "Deploy carefully."
 git -C "$HOME/work" add -A && git -C "$HOME/work" -c user.name=t -c user.email=t@t commit -qm init
-has "add detects a git repo" "$(cd "$HOME/work" && msl add deploy)" "added deploy (git"
+has "a skill in a git repo is managed like your own" "$(cd "$HOME/work" && msl add deploy)" "added deploy (local)"
 echo "Run the smoke test first." >> "$HOME/work/.cursor/skills/deploy/SKILL.md"
 msl keep deploy -m "smoke test" >/dev/null
+# A teammate's change arrives with git pull; git merges it with the uncommitted refinement.
 git -C "$HOME/work" stash -q
 sed 's/^# deploy$/# deploy (announce in the channel)/' "$HOME/work/.cursor/skills/deploy/SKILL.md" > "$HOME/x" && mv "$HOME/x" "$HOME/work/.cursor/skills/deploy/SKILL.md"
 git -C "$HOME/work" -c user.name=t -c user.email=t@t commit -qam "team change"
-has "a pulled repo change is detected" "$(state_of deploy)" "upstream-update"
-msl update deploy --check >/dev/null
-check "checking a repo skill never rewrites the repo" test -z "$(git -C "$HOME/work" status --porcelain)"
-msl update deploy >/dev/null
-msl update deploy --apply >/dev/null
+git -C "$HOME/work" stash pop -q
+has "what a pull brought is a live edit" "$(state_of deploy)" "changed"
+has "whose diff shows it" "$(msl diff deploy)" "+# deploy (announce in the channel)"
+msl keep deploy -m "team: announce in the channel" >/dev/null
 out="$(cat "$HOME/work/.cursor/skills/deploy/SKILL.md")"
-if grep -qF -- "smoke test" <<<"$out" && grep -qF -- "announce in the channel" <<<"$out"; then ok "repo change merged with your refinement"; else bad "repo change merged with your refinement" "$out"; fi
+if grep -qF -- "smoke test" <<<"$out" && grep -qF -- "announce in the channel" <<<"$out"; then ok "kept with your refinement"; else bad "kept with your refinement" "$out"; fi
+has "msl never commits in the repo" "$(git -C "$HOME/work" rev-list --count HEAD)" "2"
+check "a repo skill has no upstream for msl to update" fails msl update deploy
 
 echo "edge cases"
 # The skills CLI without --copy links the Claude Code folder to ~/.agents/skills.
 skill "$HOME/.agents/skills/linked" linked
 ln -s "$HOME/.agents/skills/linked" "$HOME/.claude/skills/linked"
-lacks "a symlinked install is one copy, not two" "$(msl add linked)" ".claude/skills/linked"
+has "a symlinked install is recognized as a link" "$(msl add linked)" "also loaded from ~/.claude/skills/linked (a link to it)"
 echo "via the link" >> "$HOME/.claude/skills/linked/SKILL.md"
 has "an edit through the link is a live edit" "$(state_of linked)" "changed"
 has "and can be kept" "$(msl keep linked -m link)" "v2 kept"
@@ -347,22 +345,24 @@ has "parallel feedback gets distinct ids" "$(find "$HOME/.meta-skill-loop/skills
 lacks "parallel calls don't see phantom edits" "$(cat "$HOME/.meta-skill-loop/skills/tooling/feedback"/*.md)" "+edits"
 has "and the skill is still clean" "$(state_of tooling)" "clean"
 
-# `npx skills update` has no --copy: it reinstalls with a symlink from the Claude
-# Code folder to ~/.agents/skills. Syncing copies must never wipe a folder onto itself.
+# `npx skills update` has no --copy: it reinstalls the Claude Code copy as a link
+# into ~/.agents/skills. The one folder stays the one folder.
 skill "$HOME/.agents/skills/relinked" relinked "Base."
 skill "$HOME/.claude/skills/relinked" relinked "Base."
 lock relinked 111111111111
 msl add relinked >/dev/null
+msl link relinked >/dev/null
 echo "Mine." >> "$HOME/.claude/skills/relinked/SKILL.md"
 msl keep relinked -m mine >/dev/null
 rm -rf "$HOME/.agents/skills/relinked" "$HOME/.claude/skills/relinked"
 skill "$HOME/.agents/skills/relinked" relinked "Base, updated upstream."
-ln -s "$HOME/.agents/skills/relinked" "$HOME/.claude/skills/relinked"
+ln -s ../../.agents/skills/relinked "$HOME/.claude/skills/relinked"
 lock relinked 222222222222
-has "an update that turned a copy into a link is detected" "$(state_of relinked)" "upstream-update"
+has "an installer update is detected" "$(state_of relinked)" "upstream"
+lacks "the installer's own link isn't flagged" "$(msl status relinked)" "separate copy"
 msl update relinked --no-fetch >/dev/null
 check "recording it leaves the skill in place, not empty" test -f "$HOME/.agents/skills/relinked/SKILL.md"
-has "and your version stays live" "$(cat "$HOME/.claude/skills/relinked/SKILL.md")" "Mine."
+has "and your version stays live in every tool" "$(cat "$HOME/.claude/skills/relinked/SKILL.md")" "Mine."
 
 echo "review fixes"
 # A pending merge is applied only if nothing changed since it was prepared.
@@ -387,25 +387,6 @@ msl discard pending >/dev/null
 msl update pending --no-fetch >/dev/null
 has "a fresh review applies" "$(msl update pending --apply)" "v3: pending now runs upstream 222222222222"
 
-# A git repo's committed content is upstream; uncommitted refinements never leak into it.
-mkdir -p "$HOME/team2/.cursor/skills/rules" && git -C "$HOME/team2" init -q
-skill "$HOME/team2/.cursor/skills/rules" rules "Base rule."
-echo "other v1" > "$HOME/team2/.cursor/skills/rules/other.md"
-git -C "$HOME/team2" add -A && git -C "$HOME/team2" -c user.name=t -c user.email=t@t commit -qm init
-(cd "$HOME/team2" && msl add rules >/dev/null)
-echo "My local rule." >> "$HOME/team2/.cursor/skills/rules/SKILL.md"
-msl keep rules -m "local rule" >/dev/null
-for n in 2 3; do
-  echo "other v$n" > "$HOME/team2/.cursor/skills/rules/other.md"
-  git -C "$HOME/team2" -c user.name=t -c user.email=t@t commit -qm "pull $n" -- .cursor/skills/rules/other.md
-  out="$(msl update rules)"
-  lacks "pull $n: your uncommitted refinement is still seen as yours" "$out" "you had no refinements"
-  msl update rules --apply >/dev/null
-  has "pull $n: the refinement survives" "$(cat "$HOME/team2/.cursor/skills/rules/SKILL.md")" "My local rule."
-  has "pull $n: the teammate's change is in" "$(cat "$HOME/team2/.cursor/skills/rules/other.md")" "other v$n"
-done
-lacks "upstream never contains the local refinement" "$(msl git rules show upstream:SKILL.md)" "My local rule."
-
 # A version is never claimed if git can't record it.
 msl git tooling config commit.gpgsign true && msl git tooling config gpg.program false
 echo "unsigned edit" >> "$HOME/.agents/skills/tooling/SKILL.md"
@@ -423,7 +404,7 @@ check "keep refuses feedback from another skill" fails msl keep linked -m x --fi
 has "and makes no version" "$(version_of linked)" "v2*"
 msl discard linked >/dev/null
 
-# One command at a time per skill; a stale lock from a crashed run is cleared.
+# One msl command at a time; a lock left by a crashed run is cleared.
 for i in 1 2 3; do
   echo "par $i" >> "$HOME/.agents/skills/tooling/SKILL.md"
   ( msl keep tooling -m "par $i" >/dev/null 2>&1 ) &
@@ -432,9 +413,9 @@ for i in 1 2 3; do
 done
 has "keeps racing with diffs record every edit" "$(msl git tooling show mine:SKILL.md)" "par 3"
 has "and leave the skill clean" "$(state_of tooling)" "clean"
-mkdir -p "$HOME/.meta-skill-loop/skills/tooling/lock" && echo 999999 > "$HOME/.meta-skill-loop/skills/tooling/lock/pid"
+mkdir -p "$HOME/.meta-skill-loop/lock" && echo 999999 > "$HOME/.meta-skill-loop/lock/pid"
 has "a stale lock doesn't block" "$(state_of tooling)" "clean"
-check "and is released afterwards" test ! -e "$HOME/.meta-skill-loop/skills/tooling/lock"
+check "and the lock is released after each command" test ! -e "$HOME/.meta-skill-loop/lock"
 
 # Feedback ids are unique across skills, even when logged at the same moment.
 for i in 1 2 3 4 5 6; do
@@ -450,7 +431,7 @@ lock shared-name 333333333333
 mkdir -p "$HOME/team3/.cursor/skills" && git -C "$HOME/team3" init -q
 skill "$HOME/team3/.cursor/skills/shared-name" shared-name "The team's own."
 git -C "$HOME/team3" add -A && git -C "$HOME/team3" -c user.name=t -c user.email=t@t commit -qm init
-has "a team skill sharing a name with a CLI install is a git skill" "$(msl add "$HOME/team3/.cursor/skills/shared-name")" "added shared-name (git"
+has "a project skill sharing a name with a CLI install isn't taken for it" "$(msl add "$HOME/team3/.cursor/skills/shared-name")" "added shared-name (local)"
 
 echo "remove"
 skill "$HOME/.agents/skills/tmp-skill" tmp-skill

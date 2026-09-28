@@ -19,7 +19,7 @@ bash ~/.cursor/skills/meta-skill-loop/scripts/msl init
 
 If none works, use the folder your tool loaded this skill from: `bash <that folder>/scripts/msl init`.
 
-**Versions work like git.** Changes in a skill folder are *live edits* until `msl keep` makes them the next version (v2, v3, …). `msl discard` throws them away; they're saved, and `msl restore` brings them back. A skill someone else publishes also tracks the published *upstream* versions, and updates are merged into the user's version instead of overwriting it.
+**Versions work like git.** Changes in a skill folder are *live edits* until `msl keep` makes them the next version (v2, v3, …). `msl discard` throws them away; they're saved, and `msl restore` brings them back. A skill installed with the `skills` CLI also tracks the published *upstream* versions, and updates are merged into the user's version instead of overwriting it. Each skill has one real folder; other tool folders link to it, so an edit reaches every tool.
 
 ## Status: "meta-skill-loop", "status", "which skills have feedback?"
 
@@ -28,14 +28,14 @@ Run `msl status` and summarize it in a few lines: each skill's version (`v3*` me
 - Suggest "refine <skill>" when a skill has 2+ open entries.
 - If unmanaged skills are listed, offer to add them, once per conversation.
 - **Live edits** (`changed`): show `msl diff <name>`, then ask whether to keep or discard them. Before keeping, check `msl feedback list <name>`. If the edits address open entries, confirm with the user and add `--fixes fb-…,fb-…`.
-- **`copies-differ`**: the skill is installed in several folders, and two of them were edited differently. Show the difference (`diff -r <one> <other>`), and keep the copy the user picks: `msl keep <name> --from <path> -m "<what changed>"`.
 
 ## Add: "add my skills", "manage grill-me"
 
 1. Run `msl add` with no name. It lists installed skills; `new` means not managed yet.
 2. Confirm which to add. Suggest the ones the user actually uses, not every skill on disk.
-3. Run `msl add <name>` for each (or `msl add <path>` for a specific folder). The skill is not modified. msl reports the kind: `local` (the user's own), `skills-cli` (installed by the `skills` CLI), or `git` (lives in a git repo).
-4. The first time, suggest the one-time setup below if the user hasn't done it.
+3. Run `msl add <name>` for each (or `msl add <path>` for a specific folder). The skill is not modified. msl reports the kind: `skills-cli` (installed by the `skills` CLI, so it has upstream updates) or `local` (everything else, including skills inside a git repo, whose pulls simply show up as changes to keep).
+4. If msl says the skill is also a separate copy in another tool's folder, ask whether to link it so one edit reaches every tool: `msl link <name>`. The copy is set aside in `~/.meta-skill-loop/archive/`, not deleted.
+5. The first time, suggest the one-time setup below if the user hasn't done it.
 
 **One-time setup (recommended).** So the agent offers to log feedback when the user corrects a skill, the user adds this line to their tool's own rules: *"When the user corrects how a skill behaved or gives feedback on a skill, offer to log it with the meta-skill-feedback skill."*
 - Cursor: Settings > Rules > User Rules.
@@ -65,7 +65,7 @@ Either way the result is a new version, and the feedback the undone versions fix
 
 **Just checking:** `msl update <name> --check` records the latest upstream and shows what it changes. Nothing live changes. Summarize it and ask whether to take it.
 
-**Taking it:** run `msl update <name>`. For a `skills-cli` skill it fetches the latest version first. For a `git` skill, the user pulls in their repo as usual.
+**Taking it:** run `msl update <name>`. It fetches the latest version with the `skills` CLI first (only `skills-cli` skills have updates; changes to any other skill, such as a `git pull`, show up as live edits).
 - **No refinements:** the update is applied directly as the next version. Report it.
 - **Refinements:** msl prepares a merge **without touching the live skill**. Show `msl diff <name> --merge`, which is what the skill would become.
 - **Conflicts listed:** edit the files in `~/.meta-skill-loop/skills/<name>/merge/` to resolve each `<<<<<<<`/`>>>>>>>` section by intent (`msl history <name>` and the feedback say why each refinement exists). Show the result.

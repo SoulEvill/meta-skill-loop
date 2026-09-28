@@ -38,7 +38,7 @@ meta-skill-loop never needs to know what a skill does, which pack it came from, 
 | Shared frontmatter | `name`, `description` | `name`, `description` | `name`, `description` |
 
 Hence:
-- Skills are **managed in place**, never moved or symlinked, and meta-skill-loop's own skills are installed by **copy**.
+- Skills are **managed in place**, never moved. A skill installed for several tools is one real folder (preferably in `~/.agents/skills`, read by Cursor and Codex); other tool folders link to it, which is the layout the `skills` CLI itself produces on update. meta-skill-loop's own skills are installed by **copy**.
 - Metadata lives outside `SKILL.md`.
 - Nothing depends on hooks or Claude-only features (`!command` injection, `${CLAUDE_SKILL_DIR}`).
 - Everything mechanical is in one bash 3.2 script, and the agent only does judgment.
@@ -52,14 +52,13 @@ The workspace format is versioned (`format:` in `workspace.yaml`), so a later re
   workspace.yaml                     format: 1, id: k3x9a2 (random, created once; used in feedback ids), created
   bin/msl                            a launcher that runs scripts/msl from the installed meta-skill-loop skill
   sessions/                          copies of the conversations feedback was logged in
-  ids/                               feedback ids handed out (keeps them unique across skills)
+  lock/                              only while an msl command runs (one at a time)
   skills/<name>/
-    skill.yaml                       name, kind (local|skills-cli|git), source_url, source_path, added, paths (primary first)
-    git/                             the skill's version history (git dir; its working tree is the live skill folder)
+    skill.yaml                       name, kind (local|skills-cli), source_url, source_path, added, path, links
+    git/                             the skill's version history (git dir; its working tree is the skill's folder)
     feedback/fb-k3x9a2-007.md        one file per entry
-    lock/                            only while an msl command is working on the skill
     merge/                           only while an upstream merge waits for review (a temporary git worktree)
-  archive/                           data of skills you stopped managing
+  archive/                           data of skills you stopped managing, and copies set aside by msl link
 ```
 
 **One git repo per skill, two branches** (the classic "vendor branch" pattern):
@@ -70,12 +69,11 @@ The workspace format is versioned (`format:` in `workspace.yaml`), so a later re
   mine:         v1 ── v2 ── v3 ─────────── v4 (merge)    what the tools load = upstream + your refinements
 ```
 
-- **A skill in a git repo:** `upstream` is the repo's committed content at HEAD (exported with `git archive`), never the folder itself, because the folder also holds the user's uncommitted refinements. So a pull that touches other files still shows the refinements as theirs, and the update merges them for review.
 - The git dir sits in the workspace with `core.worktree` pointing at the live folder, so the folder **is** the working tree of `mine`. There's nothing to re-point, tools never see a `.git`, and installers can overwrite files without destroying history. Dotfiles are ignored.
 - Every commit on `mine` is a version and is tagged `v1`, `v2`, …. The subject says what changed; an `Upstream-Rev: <rev>` trailer records which upstream a version is based on.
 - Changes in the live folder that aren't a version yet are "live edits". Each `msl` call that sees them saves them with `git stash`, so nothing unversioned can be lost. `discard` throws them away and `restore` re-applies the latest saved ones.
-- **Safety.** One msl command at a time per skill (a lock in `skills/<name>/lock`, cleared if its process is gone). Syncing copies touches only skill files, never a copy's dotfiles or `.git`. A pending update is applied only if the version and the folder are unchanged since the merge was prepared. A version is claimed only after git has recorded it. Feedback ids are reserved workspace-wide in `ids/`, and `--fixes` accepts only feedback on the skill being changed.
-- **Copies.** A skill installed in several tool folders (the `skills` CLI puts one in `~/.agents/skills` and one in `~/.claude/skills`) is one managed skill with several `paths`. msl keeps them identical. An edit in any one copy is a live edit: that copy becomes the primary (the repo's working tree), and keeping it updates the others. Two copies edited differently are a conflict (`copies-differ`) that the user resolves with `keep --from <path>`.
+- **One folder.** `path` is the skill's one real folder. `links` are its other install locations (in other tools' folders), each of which should be a link to it. `add` records them; `msl link` replaces a separate copy with a link, moving the copy into `archive/copies/`. `status` flags a location that became a separate copy again (say, a reinstall with `--copy`). msl never copies files between folders.
+- **Safety.** One msl command at a time for the whole workspace (a `lock/` folder holding the pid, cleared if that process is gone), so parallel sessions can't interleave and feedback ids stay unique. A pending update is applied only if the version and the folder are unchanged since the merge was prepared. A version is claimed only after git has recorded it. `--fixes` accepts only feedback on the skill being changed.
 
 **Feedback entry.** Header fields are what msl reads and filters on; the body is free-form for people and agents.
 
@@ -117,32 +115,31 @@ fixed_in: v4                  # set by msl when applied; rollback reads it to re
 
 | kind | Other writer | New upstream recognized by |
 |---|---|---|
-| `local` | nobody | never: every change is yours |
-| `skills-cli` | `npx skills update` | lock-file revision not yet recorded on `upstream` |
-| `git` | `git pull`, teammates | the last commit touching the folder isn't recorded yet |
+| `skills-cli` | `npx skills update` | the lock-file revision isn't recorded on `upstream` yet, or the folder holds a known upstream version |
+| `local` | you, a skill creator, `git pull` (for a skill inside a git repo) | never: every change is a live edit to keep or discard |
+
+A skill inside a git repo is `local` on purpose: git owns that folder's history, merges and pulls. Running a second version control over the same files (an earlier design) caused most of the bugs found in review.
 
 **States:**
 
 | State | Meaning |
 |---|---|
 | `clean` | the live folder is the current version |
-| `changed` | live edits (yours, a creator tool's, a hand edit, in any copy), saved automatically |
-| `upstream-update` | an installer or pull put a **new** upstream version in place; yours is safe on `mine` |
-| `upstream-live` | an already-known upstream version was put back (e.g. a reinstall); your refinements aren't live |
-| `copies-differ` | two installed copies were edited differently |
-| `missing` | every copy of the folder is gone |
+| `changed` | live edits (yours, a creator tool's, a hand edit, a pull), saved automatically |
+| `upstream` | an installer (update or reinstall) replaced your version in the folder; yours is safe on `mine`, and `msl update` takes it from there |
+| `missing` | the folder is gone |
 
 ## 6. Flows
 
-- **Add.** Find every installed copy with that name (only identical ones: a different skill that shares the name is left alone); the first is primary, the others are kept in sync. Detect the kind. Create the git dir and commit the folder as `v1` (with `Upstream-Rev` and an `upstream` branch if it has one). **The skill file is not modified.**
+- **Add.** Find every install location with that name. The one real folder is the path given, else the one in `~/.agents/skills`, else the first found. Links to it and identical separate copies are recorded as `links` (the agent offers `msl link` for the copies); a different skill that shares the name is left alone. Detect the kind. Create the git dir and commit the folder as `v1` (with `Upstream-Rev` and an `upstream` branch if it has one). **The skill file is not modified.**
 - **Capture.** Identify the skill, add it if needed, write a title, a severity, and a free-form body (asked/observed/expected/user said/evidence, trimmed, with no secrets), then `msl feedback add`, which also saves a copy of the conversation. It never edits the skill. The agent offers capture after a correction because of one line the user adds once to their tool's own rules (the README and the hub skill give it). meta-skill-loop no longer inserts anything into skills.
 - **Refine.** Status must be clean. The agent reads the open feedback, writes a brief (themes, then desired behavior), and proposes the smallest edit. A skill-creator tool can draft it. After approval, the edit is applied to the live folder. Then either keep it (`msl keep --fixes …` makes the next version and marks entries applied in it) or try it first (saved automatically; later keep, or `discard`/`restore`).
 - **History, revert, rollback.** `msl history` lists versions with the feedback each fixed, the upstream revision, and feedback counted per version. `msl revert <vN>` undoes one version and keeps the rest. `msl rollback <vN>` restores that version's content. Both create a new version and reopen the feedback the undone versions fixed (`fixed_in`). Rollback warns (and needs `--yes`) when it crosses an upstream merge.
 - **Update.** `msl update <name>`:
-  1. Bring in the new upstream. For `skills-cli`, it runs `npx skills update`. For `git`, the user pulls as usual.
+  1. Bring in the new upstream: run `npx skills update` (only `skills-cli` skills have an upstream).
   2. Record it on `upstream`, then put `mine` back in the live folder, so the user's version stays live.
   3. If there are no refinements, fast-forward as the next version. Otherwise merge in a temporary worktree (`merge/`) for review: `msl diff --merge` and `--upstream`. The agent resolves conflicts by intent, then `--apply`, `--abort`, or `--take-upstream`.
-  If an installer runs directly instead, status shows `upstream-update` and the same flow picks it up. `--check` stops after step 2: it reports and shows what upstream changed.
+  If an installer runs directly instead, status shows `upstream` and the same flow picks it up. `--check` stops after step 2: it reports and shows what upstream changed.
 - **Lost live edits.** If an update or reinstall overwrites edits that were being tried out (not kept yet), status says so: they're in the stash. `msl diff --saved` previews them, and `msl restore` brings them back. The index is always left on `mine`, so a later `restore` applies cleanly.
 
 ## 7. Decisions and accepted limits (2026-09-28)
@@ -156,7 +153,7 @@ fixed_in: v4                  # set by msl when applied; rollback reads it to re
   - Installers run outside `msl update` put upstream live until reconciled.
   - A moved skill folder must be re-added.
   - Conversation copies can be large (megabytes for a long session); they're kept whole for now and can be trimmed later.
-  - In a skill that lives in a team git repo, the user's refinements are uncommitted changes in that repo, so `git pull` may ask to commit or stash first.
+  - In a skill that lives in a git repo, the user's refinements are uncommitted changes in that repo, so `git pull` may ask to commit or stash first. For a team skill, send the change to the repo.
 - **Designed for, not built:**
   - Publishing feedback and versions to a remote (§8, v2). Feedback ids are unique across workspaces for this.
   - Syncing several machines: each skill's history can be pushed to one private remote under its own branch names, with no change to the local layout.

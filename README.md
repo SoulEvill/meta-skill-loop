@@ -50,7 +50,7 @@ Talk to your agent:
 
 | Say | What happens |
 |---|---|
-| "meta-skill-loop add" | lists skills you have that aren't managed yet, and adds the ones you pick (as v1) |
+| "meta-skill-loop add" | lists skills you have that aren't managed yet, and adds the ones you pick (as v1); offers to link copies in other tool folders to one folder |
 | "feedback on grill-me: it asks way too many questions" / "record this" | logs an entry: a title, severity, what you asked, what happened, what you expected, evidence, the version, and a copy of the conversation |
 | "refine grill-me" | groups feedback into themes, proposes the smallest edit, and applies it after you approve |
 | "keep it" / "discard it" | the edit becomes the next version, or is thrown away (saved, so it can be restored) |
@@ -71,7 +71,7 @@ Talk to your agent:
 ### `msl` (what the skills call; you can too)
 
 ```
-msl status [name]                  msl add [name|path]         msl remove <name>
+msl status [name]                  msl add [name|path]         msl link <name>          msl remove <name>
 msl feedback add <name> -t <title> [--severity P0|P1|P2|P3|nit] < body
 msl feedback list <name> [--all]   msl feedback mark <id> open|applied|declined [--fixed-in vN]
 msl diff <name> [vA [vB] | --upstream | --merge | --saved]      msl history <name>
@@ -84,16 +84,14 @@ msl update <name> [--check | --apply | --abort | --take-upstream]
 
 ## How it thinks about skills
 
-- **Where a skill comes from** is detected when you add it, by asking who else writes its folder:
-  - `local`: only you.
-  - `skills-cli`: `npx skills update` writes it; the lock file tells us the upstream version.
-  - `git`: `git pull` and teammates write it; the repo history tells us.
+- **One folder per skill.** A skill installed for several tools (say `~/.agents/skills` and `~/.claude/skills`) is managed as its one real folder, preferably the one in `~/.agents/skills`, which Cursor and Codex read directly. The other tool folders should link to it, so an edit reaches every tool. `msl link` does that for you, with your approval; a separate copy it replaces is set aside, never deleted.
+- **Two kinds of skill**, detected when you add it:
+  - `skills-cli`: installed with the `skills` CLI. It has published upstream versions, and `msl update` merges them with your refinements for review.
+  - `local`: everything else: your own skills, and skills inside a git repo. Whatever changes the folder (you, a skill creator, a `git pull`) shows up as live edits you keep or discard.
 - **States:**
   - `clean`: the folder is your current version.
   - `changed`: live edits not kept yet; they're saved automatically.
-  - `upstream-update`: an installer or `git pull` put a new upstream version in place. Your version is safe; `msl update` merges.
-  - `upstream-live`: an older upstream version was put back.
-  - `copies-differ`: the same skill is installed in several tool folders, and two were edited differently. (An edit in any one copy is simply a live edit; keeping it updates every copy.)
+  - `upstream`: an installer (`npx skills update`, a reinstall) replaced your version in the folder. Your version is safe; `msl update` takes it from there.
   - `missing`: the folder is gone.
 - **Feedback entries** are one Markdown file each, with ids like `fb-k3x9a2-012`: this workspace's id plus a sequence number. The header records the title, the version the feedback was about, when, the tool, a pointer to the saved conversation, the severity (`P0` harmful, `P1` wrong result, `P2` worked badly, `P3` minor, `nit`), the status (`open`, `applied`, `declined`), and `fixed_in` (the version that fixed it). The body is free-form: usually what was asked, observed, and expected, what the user said, and evidence. The full format is in [design.md](docs/design.md#5-data-model).
 - **Conversations.** In Claude Code, a copy of the current conversation is saved in `~/.meta-skill-loop/sessions/` with the feedback, since tools delete old ones. msl only copies a conversation it can identify for certain, so in Cursor and Codex the entry itself carries the relevant exchanges (or the agent passes `--session <file>`).
@@ -101,8 +99,8 @@ msl update <name> [--check | --apply | --abort | --take-upstream]
 
 ## Good to know
 
-- **Skills that live in a git repo** (a team repo's `.cursor/skills`): pull as usual. meta-skill-loop records what the pull brought and never rewrites the repo's files to do so. Refinements to a team skill are uncommitted changes in that repo, so `git pull` may ask you to commit or stash them first. For a team skill, prefer sending the change to the repo.
-- **`npx skills update` and links.** The `skills` CLI's `update` has no `--copy` option: it reinstalls the Claude Code copy as a link to `~/.agents/skills`. Every tool still loads it, and meta-skill-loop treats the two paths as one folder.
+- **Skills that live in a git repo** (a team repo's `.cursor/skills`): git stays in charge of the repo. meta-skill-loop keeps your feedback and versions; what a `git pull` brings shows up as live edits to keep. Your refinements are uncommitted changes in that repo, so for a team skill, send the change to the repo.
+- **`npx skills update` and links.** The `skills` CLI's `update` has no `--copy` option: it reinstalls the Claude Code copy as a link to `~/.agents/skills`, which is the layout meta-skill-loop wants anyway.
 - **Two different skills with the same name** (say, your personal `pr-review` and a project's own): only one can be managed under that name. The other is left untouched, and `add` tells you how to switch.
 - **Your data** is plain folders in `~/.meta-skill-loop` (feedback files, conversation copies, and a small git repo per skill). Back it up like any folder. It stays on your machine. Conversation copies are the bulk of it; delete old ones in `sessions/` if it grows.
 - **Uninstall:** `npx skills remove meta-skill-loop meta-skill-feedback meta-skill-refine -g`. Your skills are untouched either way. Deleting `~/.meta-skill-loop` also deletes your feedback and version history.
