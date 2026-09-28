@@ -6,7 +6,7 @@ This repo is the public source of meta-skill-loop: three agent skills plus `msl`
 
 - `skills/<name>/SKILL.md`: the skills. Frontmatter is **only** `name` and `description`, the subset Cursor, Codex, and Claude Code all honor. No tool-specific syntax (no `!command` injection, no `${CLAUDE_*}` variables, no hooks).
 - `skills/meta-skill-loop/scripts/msl`: all mechanical work (per-skill git repos in the workspace; see design.md §5). It ships inside the hub skill, so the package is self-contained; `msl init` writes `~/.meta-skill-loop/bin/msl`, a launcher into the installed skill, which is the path the skills use.
-- Install is `npx skills add SoulEvill/meta-skill-loop -g --copy` (copy, never symlink: Cursor's symlink discovery is unreliable). There is no installer script: first use of any skill runs `msl init`.
+- Install is `npx skills@latest add SoulEvill/meta-skill-loop --skill '*' --agent cursor claude-code codex -g` (the README's command). The skills CLI keeps the real folder in `~/.agents/skills` and links Claude Code's to it, which is meta-skill-loop's one-folder model. There is no installer script: first use of any skill runs `msl init`.
 - `tests/run.sh`: end-to-end tests in a throwaway `$HOME`. `tests/lint-skills.sh`: skills stay portable. `tests/package.sh`: real `skills` CLI install. `tests/agent/run.sh <agent>`: real-agent tests (manual; needs a key).
 - `.github/workflows/`: `ci` (every push/PR), `release` (on `v*` tags), `agent-tests` (manual, owner only). See `docs/maintaining.md`.
 

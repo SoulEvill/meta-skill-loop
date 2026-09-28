@@ -15,7 +15,7 @@ How releases, CI, and repository protection work. Reference material: if it disa
    ```
    The `release` workflow refuses a tag that isn't on `main` or doesn't match `MSL_VERSION`. It reruns all tests and publishes a GitHub Release with generated notes.
 
-Users install from `main` (`npx skills add SoulEvill/meta-skill-loop`) or pin a tag (`SoulEvill/meta-skill-loop#v0.2.0`), and update with `npx skills update`.
+Users install from `main` with the README's command (`npx skills@latest add SoulEvill/meta-skill-loop --skill '*' --agent cursor claude-code codex -g`) or pin a tag (`SoulEvill/meta-skill-loop#v0.2.0`), and update with `npx skills@latest update -g`.
 
 ## Real-agent tests (manual)
 

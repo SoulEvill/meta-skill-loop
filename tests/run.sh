@@ -54,7 +54,7 @@ lock() { # name rev
 echo "install and first use"
 new_home
 skill "$HOME/.cursor/skills/grill-me" grill-me "Ask hard questions."
-# What `npx skills add … -a cursor -a codex -a claude-code --copy` does: plain copies.
+# Two separate copies (a --copy install, or by hand); the launcher tests below rely on it.
 for t in "$HOME/.agents/skills" "$HOME/.claude/skills"; do mkdir -p "$t" && cp -R "$REPO"/skills/* "$t/"; done
 "$SH" "$HOME/.agents/skills/meta-skill-loop/scripts/msl" init >/dev/null
 check "first use installs the msl launcher" test -x "$HOME/.meta-skill-loop/bin/msl"
@@ -497,7 +497,7 @@ rm -rf "$HOME/.agents/skills/meta-skill-loop"
 has "launcher falls back to another installed copy" "$(msl version)" "0."
 check "launcher now points at that copy" grep -q '.claude/skills/meta-skill-loop" "' "$HOME/.meta-skill-loop/bin/msl"
 rm -rf "$HOME/.claude/skills/meta-skill-loop"
-has "launcher explains how to reinstall" "$(msl status 2>&1 || true)" "npx skills add SoulEvill/meta-skill-loop"
+has "launcher explains how to reinstall" "$(msl status 2>&1 || true)" "npx skills@latest add SoulEvill/meta-skill-loop"
 
 printf '\n%s passed, %s failed\n' "$pass" "$fail"
 [ "$fail" = 0 ]
