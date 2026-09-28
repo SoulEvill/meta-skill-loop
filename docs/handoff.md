@@ -2,18 +2,20 @@
 
 Rewritten at the end of every working session, so the next session (human or agent, local or cloud) can pick up. It's a snapshot, not a history: git log has the history. For the design, see [design.md](design.md). The code is the source of truth.
 
-_Last updated: 2026-09-28, after simplifying the core following the first independent review._
+_Last updated: 2026-09-28, after PR #1 merged and the README and install were simplified._
 
 ## Where things stand
 
-- **v0.2.0 is on PR #1** (`claude/inspiring-ritchie-n204ga` → `main`); `main` has only the README and license, so `npx skills add SoulEvill/meta-skill-loop` works only after the merge.
+- **v0.2.0 is merged to `main`** (PR #1, after three independent review rounds). Not tagged yet.
+- **Install** follows the other Wendao skills (`SoulEvill/wendao-skills`): `npx skills@latest add SoulEvill/meta-skill-loop --skill '*' --agent cursor claude-code codex -g`. The skills CLI's default mode keeps one real folder in `~/.agents/skills` and links Claude Code's, which is meta-skill-loop's one-folder model; `--copy` is no longer recommended.
+- **Stays its own repo**, separate from wendao-skills: it's a tool with its own code, tests, and releases, while wendao-skills holds prose skills. Decided with the user.
 - **The core model** (design.md §5):
   - one real folder per skill; other tool folders link to it (`msl link`, with approval; copies are set aside, never deleted);
   - two kinds: `skills-cli` (installed by the `skills` CLI; reviewed upstream updates) and `local` (everything else, including skills inside a git repo);
   - four states: `clean`, `changed`, `upstream`, `missing`;
   - one workspace lock: one msl command at a time.
 - **Formats** (settled before release): feedback entries (title, version, tool, conversation copy, severity `P0`–`P3`/`nit`, status `open`/`applied`/`declined`, `fixed_in`; free-form body), `workspace.yaml` with `format: 1` and a 6-character id, `skill.yaml` with `path` and `links`.
-- **Tests:** `tests/run.sh` (177, bash 5 and 3.2, always with a space in `$HOME`, `TZ=UTC`), skills lint, a real `skills` CLI install, and a real Claude Code agent test. CI runs the first three on Ubuntu and macOS.
+- **Tests:** `tests/run.sh` (177, bash 5 and 3.2, always with a space in `$HOME`, `TZ=UTC`), skills lint, a real `skills` CLI install (checks the default layout: real folder plus Claude Code link), and a real Claude Code agent test. CI runs the first three on Ubuntu and macOS.
 
 ## Why the core changed (after review round 1)
 
@@ -40,8 +42,8 @@ The per-skill locks and workspace-wide id reservation added during the review we
 
 ## Next steps
 
-1. The reviewer re-reviews PR #1 after the simplification.
-2. The user tries it in Cursor: `npx skills add "SoulEvill/meta-skill-loop#claude/inspiring-ritchie-n204ga" -g --copy`, then add (and link), feedback, refine, keep, update.
-3. The user configures repo protection from `docs/maintaining.md`.
-4. Merge PR #1 when CI is green and the review passes; tag `v0.2.0`.
+1. Tag `v0.2.0` on `main` (the release workflow checks it matches `MSL_VERSION`).
+2. The user configures repo protection from `docs/maintaining.md`.
+3. The user tries it in Cursor with the README's install command: add, feedback, refine, keep, update.
+4. Link meta-skill-loop from the wendao-skills README once that repo is public.
 5. Then v2 (`publish`).

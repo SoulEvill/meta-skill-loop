@@ -24,9 +24,9 @@ ok() { printf '  ok   %s\n' "$1"; }
 bad() { printf '  FAIL %s (transcript: %s)\n' "$1" "${2:-}"; fail=1; }
 
 case "$AGENT" in
-  claude-code) agents="-a claude-code"; skills_dir="$HOME/.claude/skills" ;;
-  cursor) agents="-a cursor"; skills_dir="$HOME/.agents/skills" ;;
-  codex) agents="-a codex"; skills_dir="$HOME/.agents/skills" ;;
+  claude-code) agents="--agent claude-code"; skills_dir="$HOME/.claude/skills" ;;
+  cursor) agents="--agent cursor"; skills_dir="$HOME/.agents/skills" ;;
+  codex) agents="--agent codex"; skills_dir="$HOME/.agents/skills" ;;
   *) echo "unknown agent: $AGENT" >&2; exit 2 ;;
 esac
 
@@ -56,7 +56,7 @@ fi
 
 echo "install ($AGENT)"
 # shellcheck disable=SC2086
-npx -y skills@latest add "$REPO" --skill '*' -g --copy $agents -y >/dev/null 2>&1
+npx -y skills@latest add "$REPO" --skill '*' $agents -g -y >/dev/null 2>&1
 mkdir -p "$skills_dir/greeting" && cp "$REPO/tests/fixtures/greeting/SKILL.md" "$skills_dir/greeting/"
 if [ -f "$skills_dir/meta-skill-loop/SKILL.md" ]; then ok "skills installed in $skills_dir"; else bad "skills installed"; fi
 

@@ -541,7 +541,7 @@ for d in "$1" "\$HOME/.agents/skills/meta-skill-loop" "\$HOME/.cursor/skills/met
          "\$HOME/.claude/skills/meta-skill-loop" "\$HOME/.codex/skills/meta-skill-loop"; do
   if [ -f "\$d/scripts/msl" ]; then exec "\${MSL_BASH:-bash}" "\$d/scripts/msl" "\$@"; fi
 done
-echo "msl: the meta-skill-loop skill is not installed. Install it: npx skills add SoulEvill/meta-skill-loop" >&2
+echo "msl: the meta-skill-loop skill is not installed. Install it: npx skills@latest add SoulEvill/meta-skill-loop --skill '*' -g" >&2
 exit 1
 EOF
 }

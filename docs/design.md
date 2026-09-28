@@ -38,7 +38,7 @@ meta-skill-loop never needs to know what a skill does, which pack it came from, 
 | Shared frontmatter | `name`, `description` | `name`, `description` | `name`, `description` |
 
 Hence:
-- Skills are **managed in place**, never moved. A skill installed for several tools is one real folder (preferably in `~/.agents/skills`, read by Cursor and Codex); other tool folders link to it, which is the layout the `skills` CLI itself produces on update. meta-skill-loop's own skills are installed by **copy**.
+- Skills are **managed in place**, never moved. A skill installed for several tools is one real folder (preferably in `~/.agents/skills`, read by Cursor and Codex); other tool folders link to it, which is the layout the `skills` CLI itself produces on update. meta-skill-loop's own skills are installed that way too (the skills CLI's default).
 - Metadata lives outside `SKILL.md`.
 - Nothing depends on hooks or Claude-only features (`!command` injection, `${CLAUDE_SKILL_DIR}`).
 - Everything mechanical is in one bash 3.2 script, and the agent only does judgment.
@@ -162,7 +162,7 @@ A skill inside a git repo is `local` on purpose: git owns that folder's history,
 
 ## 7a. Distribution and releases
 
-- **One package format.** This repo is a standard Agent Skills package: `skills/<name>/SKILL.md`. The only install is `npx skills add SoulEvill/meta-skill-loop -g --copy` (without Node, copying the folders does the same). Team and personal skill repos use the same format, so everything installs, updates, and gets managed the same way. meta-skill-loop's own skills are ordinary managed skills: there's no special kind.
+- **One package format.** This repo is a standard Agent Skills package: `skills/<name>/SKILL.md`. The only install is `npx skills@latest add SoulEvill/meta-skill-loop --skill '*' --agent cursor claude-code codex -g`, the same form as the other Wendao skills: the CLI keeps one real folder in `~/.agents/skills` and links Claude Code's to it. Team and personal skill repos use the same format, so everything installs, updates, and gets managed the same way. meta-skill-loop's own skills are ordinary managed skills: there's no special kind.
 - **Self-contained skills.** `msl` ships inside the `meta-skill-loop` skill. Any of the three skills sets up the workspace on first use (`scripts/msl init` from the installed hub skill). `~/.meta-skill-loop/bin/msl` is a launcher into the installed skill, so updating the skill updates `msl`, with no stale copy.
 - **Later channels are thin wrappers.** Plugin marketplaces (Claude Code, Cursor, Codex) all accept a folder of skills, so each would be a small manifest at the repo root pointing at `skills/`. Nothing about the layout has to change.
 - **Versions.** Semver in `MSL_VERSION`. A release is a tag `vX.Y.Z` on a commit already on `main`; the release workflow checks that, reruns every test, and publishes a GitHub Release with generated notes. `main` is always the latest release, and users can pin a tag.
