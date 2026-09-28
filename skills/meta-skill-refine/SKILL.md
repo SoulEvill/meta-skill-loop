@@ -7,7 +7,11 @@ description: Improve a skill from its logged feedback. Use when the user says "r
 
 Turn a skill's accumulated feedback into a small, approved change, and record it as a new version tied to the feedback it fixes.
 
-Run `msl` as `~/.meta-skill-loop/bin/msl`. The first time, that file won't exist yet: set it up by running `scripts/msl init` in the `meta-skill-loop` skill's folder, which is installed next to this skill's folder (`../meta-skill-loop/scripts/msl init`), then continue.
+Run `msl` as `~/.meta-skill-loop/bin/msl`. The first time, that file won't exist yet. Set it up with this one command (it finds the installed meta-skill-loop skill by itself), then continue:
+
+```sh
+for d in ~/.agents/skills ~/.cursor/skills ~/.claude/skills ~/.codex/skills .agents/skills .cursor/skills .claude/skills; do [ -f "$d/meta-skill-loop/scripts/msl" ] && bash "$d/meta-skill-loop/scripts/msl" init && break; done
+```
 
 ## Steps
 

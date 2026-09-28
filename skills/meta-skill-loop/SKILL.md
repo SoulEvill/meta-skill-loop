@@ -7,7 +7,11 @@ description: Manage agent skills, their versions, and their feedback. Use when t
 
 meta-skill-loop helps people improve their skills over time: it collects feedback on any skill and keeps a version history of each one. Skills stay exactly where their tool loads them (`~/.cursor/skills`, `~/.agents/skills`, `~/.claude/skills`, a repo's `.cursor/skills`, …). meta-skill-loop **never edits a skill except to apply a change the user approved**. Its own data (feedback and versions) lives in `~/.meta-skill-loop/`.
 
-All bookkeeping goes through one script, `msl`. Run it as `~/.meta-skill-loop/bin/msl`. The first time, that file won't exist yet: run `scripts/msl init` from this skill's folder, which sets up the workspace and that launcher.
+All bookkeeping goes through one script, `msl`. Run it as `~/.meta-skill-loop/bin/msl`. The first time, that file won't exist yet. Set it up with this one command (it finds this skill's folder by itself), then continue:
+
+```sh
+for d in ~/.agents/skills ~/.cursor/skills ~/.claude/skills ~/.codex/skills .agents/skills .cursor/skills .claude/skills; do [ -f "$d/meta-skill-loop/scripts/msl" ] && bash "$d/meta-skill-loop/scripts/msl" init && break; done
+```
 
 **How versions work.** Each managed skill has a version history, like git:
 - **Live edits:** changes in the skill folder that aren't a version yet. They come from refine, a skill-creator tool, or a hand edit.
