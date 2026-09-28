@@ -999,13 +999,15 @@ cmd_update() {
     state="$(skill_state "$name")"
   fi
 
-  # 2. Record it and put your version back.
+  # 2. Record it, and put your version back in the folder. Not for a skill that lives
+  #    in a git repo: that folder is the repo's working tree, which msl never rewrites
+  #    except to apply a merge you approved.
   if [ "$state" = upstream-update ] || [ "$state" = upstream-live ]; then
     rev="$(current_rev "$name")"
     if import_upstream "$PRIMARY" "${rev:-unknown}"; then
       printf 'recorded upstream %s\n' "${rev:-unknown}"
     fi
-    checkout_mine "$name"
+    [ "$kind" = git ] || checkout_mine "$name"
   fi
 
   # 3. Merge (or, with --check, only report).

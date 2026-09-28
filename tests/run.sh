@@ -247,6 +247,8 @@ git -C "$HOME/work" stash -q
 sed 's/^# deploy$/# deploy (announce in the channel)/' "$HOME/work/.cursor/skills/deploy/SKILL.md" > "$HOME/x" && mv "$HOME/x" "$HOME/work/.cursor/skills/deploy/SKILL.md"
 git -C "$HOME/work" -c user.name=t -c user.email=t@t commit -qam "team change"
 has "a pulled repo change is detected" "$(state_of deploy)" "upstream-update"
+$MSL update deploy --check >/dev/null
+check "checking a repo skill never rewrites the repo" test -z "$(git -C "$HOME/work" status --porcelain)"
 $MSL update deploy >/dev/null
 $MSL update deploy --apply >/dev/null
 out="$(cat "$HOME/work/.cursor/skills/deploy/SKILL.md")"
