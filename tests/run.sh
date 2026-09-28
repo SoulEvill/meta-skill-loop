@@ -27,7 +27,8 @@ msl() { "$SH" "$HOME/.meta-skill-loop/bin/msl" "$@"; }
 
 new_home() {
   # A space in the path on purpose: macOS user names and folders often have one.
-  HOME="$(mktemp -d "${TMPDIR:-/tmp}/msl home.XXXXXX")"
+  HOME="$(mktemp -d "${TMPDIR:-/tmp}"/"msl home.XXXXXX")"
+  HOME="$(printf '%s' "$HOME" | sed 's#//*#/#g')"   # macOS TMPDIR ends in a slash
   export HOME
   unset MSL_HOME CLAUDE_CODE_SESSION_ID CLAUDECODE
   export MSL_BASH="$SH"   # the launcher runs msl with the bash under test
@@ -98,7 +99,7 @@ has "list --all shows every entry" "$(msl feedback list grill-me --all)" "title:
 check "mark rejects an unknown status" fails msl feedback mark "$(fb 002)" candidate
 
 echo "conversation copies"
-proj="$HOME/.claude/projects/$(printf '%s' "$HOME" | sed 's/[^A-Za-z0-9]/-/g')"
+proj="$HOME/.claude/projects/$(pwd -P | sed 's/[^A-Za-z0-9]/-/g')"   # physical path, as tools record it
 mkdir -p "$proj" && echo '{"old":1}' > "$proj/old.jsonl" && sleep 1 && echo '{"turn":"record this"}' > "$proj/cur.jsonl"
 out="$(echo x | msl feedback add grill-me -t s1 --tool claude-code)"
 has "claude code: the current conversation is copied" "$out" "conversation saved: ~/.meta-skill-loop/sessions/cur.jsonl"

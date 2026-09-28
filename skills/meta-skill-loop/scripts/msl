@@ -522,7 +522,7 @@ session_file() { # tool
   fi
   case "$1" in
     claude-code)
-      for d in "$PWD" "$(git rev-parse --show-toplevel 2>/dev/null || true)"; do
+      for d in "$PWD" "$(pwd -P)" "$(git rev-parse --show-toplevel 2>/dev/null || true)"; do
         [ -n "$d" ] || continue
         slug="$(printf '%s' "$d" | sed 's/[^A-Za-z0-9]/-/g')"
         [ -d "$HOME/.claude/projects/$slug" ] || continue
