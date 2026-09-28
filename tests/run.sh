@@ -63,6 +63,14 @@ check "workspace has a format version" grep -q '^format: 1$' "$HOME/.meta-skill-
 check "workspace has a 6-character id" grep -Eq '^id: [a-z0-9]{6}$' "$HOME/.meta-skill-loop/workspace.yaml"
 check "first use manages nothing by itself" test -z "$(ls "$HOME/.meta-skill-loop/skills")"
 has "meta-skill-loop's own skills are not nagged as unmanaged" "$(msl status)" "1 installed skill folder(s) not managed yet"
+lacks "no leftover note on a clean install" "$(msl status)" "left over"
+skill "$HOME/.agents/skills/meta-skill-feedback" meta-skill-feedback "Log feedback (0.2)."
+skill "$HOME/.agents/skills/meta-skill-refine" meta-skill-refine "Refine (0.2)."
+has "skills left over from 0.2 get a note with the command to remove them" "$(msl status)" "npx skills@latest remove meta-skill-feedback meta-skill-refine -g"
+has "they aren't counted as unmanaged" "$(msl status)" "1 installed skill folder(s) not managed yet"
+lacks "add doesn't list them" "$(msl add)" "meta-skill-feedback"
+lacks "add doesn't list meta-skill-loop itself" "$(msl add)" "meta-skill-loop "
+rm -rf "$HOME/.agents/skills/meta-skill-feedback" "$HOME/.agents/skills/meta-skill-refine"
 
 echo "add"
 has "add with no name lists unmanaged skills" "$(msl add)" "new      grill-me"
@@ -497,7 +505,7 @@ rm -rf "$HOME/.agents/skills/meta-skill-loop"
 has "launcher falls back to another installed copy" "$(msl version)" "0."
 check "launcher now points at that copy" grep -q '.claude/skills/meta-skill-loop" "' "$HOME/.meta-skill-loop/bin/msl"
 rm -rf "$HOME/.claude/skills/meta-skill-loop"
-has "launcher explains how to reinstall" "$(msl status 2>&1 || true)" "npx skills@latest add SoulEvill/meta-skill-loop"
+has "launcher explains how to reinstall" "$(msl status 2>&1 || true)" "npx skills@latest add SoulEvill/meta-skill-loop --skill meta-skill-loop"
 
 printf '\n%s passed, %s failed\n' "$pass" "$fail"
 [ "$fail" = 0 ]

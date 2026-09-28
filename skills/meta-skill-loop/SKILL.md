@@ -23,11 +23,11 @@ If none works, use the folder your tool loaded this skill from: `bash <that fold
 
 ## Log feedback: "log feedback on pr-review: …", "feedback on grill-me: …", "record this for the skill"
 
-Read `references/feedback.md` in this skill's folder and follow it. Only when the user asks: don't log feedback, or suggest it, just because the user corrected a skill.
+Read `references/feedback.md` in this skill's folder (usually `~/.agents/skills/meta-skill-loop/references/feedback.md`) and follow it. Only when the user asks: don't log feedback, or suggest it, just because the user corrected a skill.
 
 ## Refine: "refine pr-review", "improve grill-me from its feedback"
 
-Read `references/refine.md` in this skill's folder and follow it.
+Read `references/refine.md` in this skill's folder (usually `~/.agents/skills/meta-skill-loop/references/refine.md`) and follow it.
 
 ## Status: "meta-skill-loop", "status", "which skills have feedback?"
 

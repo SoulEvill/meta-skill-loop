@@ -533,7 +533,7 @@ session_file() {
 # the installed meta-skill-loop skill, so updating the skill (npx skills update,
 # git pull) updates msl too. Rewritten whenever it's out of date.
 
-launcher_text() { # hub skill folder
+launcher_text() { # the installed meta-skill-loop folder
   cat <<EOF
 #!/bin/sh
 # meta-skill-loop launcher: runs msl from the installed meta-skill-loop skill.
@@ -584,10 +584,14 @@ EOF
   printf 'workspace: %s (id %s)\n' "$(tilde "$MSL_HOME")" "$(ws_id)"
 }
 
+# meta-skill-loop itself, and the two skills that versions before 0.3 shipped alongside it.
+own_skill() { case "$1" in meta-skill-loop|meta-skill-feedback|meta-skill-refine) return 0 ;; esac; return 1; }
+
 list_installed() {
   local found=0 new=0 name path mark rows=""
   while IFS="$TAB" read -r name path; do
     [ -n "$name" ] || continue
+    own_skill "$name" && continue
     found=$((found + 1))
     if is_managed "$name"; then mark="managed"; else mark="new"; new=$((new + 1)); fi
     rows="$rows$(printf '%-8s %-28s %s' "$mark" "$name" "$(tilde "$path")")
@@ -770,7 +774,7 @@ EOF
 }
 
 cmd_status() {
-  local name state ver lives links unmanaged=0 rows=0 notes=""
+  local name state ver lives links unmanaged=0 leftover=0 rows=0 notes=""
   if [ $# -gt 0 ]; then
     is_managed "$1" || { printf "'%s' is not managed; add it with: msl add %s\n" "$1" "$1"; return 1; }
   fi
@@ -796,13 +800,15 @@ cmd_status() {
   [ -z "$notes" ] || printf '\n%s\n' "$notes"
   if [ $# -eq 0 ]; then
     while IFS="$TAB" read -r name _; do
-      # meta-skill-loop itself, and the two skills that versions before 0.3 shipped alongside it
-      case "$name" in ''|meta-skill-loop|meta-skill-feedback|meta-skill-refine) continue ;; esac
+      case "$name" in meta-skill-feedback|meta-skill-refine) leftover=1 ;; esac
+      if [ -z "$name" ] || own_skill "$name"; then continue; fi
       is_managed "$name" || unmanaged=$((unmanaged + 1))
     done <<EOF
 $(all_skills)
 EOF
     [ "$unmanaged" = 0 ] || printf '\n%s installed skill folder(s) not managed yet: msl add\n' "$unmanaged"
+    # Their descriptions still offer to log feedback unasked, which 0.3 stopped doing.
+    [ "$leftover" = 0 ] || printf '\nnote: meta-skill-feedback and meta-skill-refine are left over from meta-skill-loop 0.2 (now one skill). Remove them: npx skills@latest remove meta-skill-feedback meta-skill-refine -g\n'
   fi
   return 0
 }

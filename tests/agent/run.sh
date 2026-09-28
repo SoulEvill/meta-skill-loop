@@ -3,7 +3,7 @@
 # way users do, then drive the agent with plain-language prompts and check the
 # outcomes on disk (not tool-call telemetry), so the same checks work for any agent.
 #
-#   tests/agent/run.sh claude-code   # needs `claude` and ANTHROPIC_API_KEY (or a login)
+#   tests/agent/run.sh claude-code   # needs `claude`, `jq`, and ANTHROPIC_API_KEY (or a login)
 #   tests/agent/run.sh cursor        # experimental: needs `cursor-agent` and CURSOR_API_KEY
 #   tests/agent/run.sh codex         # experimental: needs `codex` and OPENAI_API_KEY
 #
@@ -89,8 +89,8 @@ if [ "$AGENT" = claude-code ]; then
   out="$(CONTINUE=1 ask "hmm, three exclamation marks is way too much. one is enough")"
   after="$(find "$HOME/.meta-skill-loop/skills" -name 'fb-*.md' | wc -l | tr -d ' ')"
   if [ "$before" = "$after" ]; then ok "nothing logged"; else bad "nothing logged" "$(last)"; fi
-  if ! grep -Eqi 'log (it|that|this)?.*feedback|feedback.*meta-skill' <<<"$out"; then ok "not even offered"; else bad "not even offered" "$(last)"; fi
-  if ! grep -q '"skill":"meta-skill-loop"' "$(last).jsonl"; then ok "the skill was not invoked"; else bad "the skill was not invoked" "$(last)"; fi
+  if ! grep -Eqi '(log|record|save|note|capture).{0,40}(feedback|meta-skill)' <<<"$out"; then ok "not even offered"; else bad "not even offered" "$(last)"; fi
+  if ! grep -Eq '"skill":"meta-skill-loop"|meta-skill-loop/(SKILL\.md|references/)' "$(last).jsonl"; then ok "the skill was not invoked"; else bad "the skill was not invoked" "$(last).jsonl"; fi
 fi
 
 [ "$fail" = 0 ] && echo "agent tests ($AGENT): ok"

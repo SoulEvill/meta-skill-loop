@@ -48,6 +48,9 @@ You can also ask:
 - **Update:** `npx skills@latest update -g`.
 - **Uninstall:** `npx skills@latest remove meta-skill-loop -g`.
   Your feedback and versions stay in `~/.meta-skill-loop` until you delete it.
+- **Upgrading from 0.2** (three skills): remove the two old ones,
+  `npx skills@latest remove meta-skill-feedback meta-skill-refine -g`, and, if you added
+  it, the rules line that mentions meta-skill-feedback.
 
 How it works: [docs/design.md](docs/design.md). Contributing: [AGENTS.md](AGENTS.md).
 

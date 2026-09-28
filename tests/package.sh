@@ -14,9 +14,9 @@ bad() { printf '  FAIL %s\n' "$1"; [ -z "${2:-}" ] || printf '%s\n' "$2" | sed '
 echo "skills CLI install"
 # The CLI colors its output on CI (Found \e[32m1\e[39m skill); compare plain text.
 out="$(npx -y skills@latest add "$REPO" --list 2>&1 | sed "s/$(printf '\033')\[[0-9;]*m//g" || true)"
-if grep -qF "Found 1 skill" <<<"$out" && grep -qF "meta-skill-loop" <<<"$out"; then ok "package is one skill, meta-skill-loop"; else bad "package is one skill, meta-skill-loop" "$out"; fi
+if grep -qF "Found 1 skill" <<<"$out" && grep -qE '^[^A-Za-z]*meta-skill-loop[[:space:]]*$' <<<"$out"; then ok "package is one skill, meta-skill-loop"; else bad "package is one skill, meta-skill-loop" "$out"; fi
 # The README's install: one real folder in ~/.agents/skills, a link for Claude Code.
-npx -y skills@latest add "$REPO" --skill meta-skill-loop --agent cursor claude-code codex -g -y >/dev/null 2>&1
+npx -y skills@latest add "$REPO" --skill meta-skill-loop --agent cursor claude-code codex -g -y >/dev/null 2>&1 || bad "skills CLI install"
 s="$HOME/.agents/skills/meta-skill-loop"
 if [ -f "$s/SKILL.md" ] && [ ! -L "$s" ]; then ok "installed ~/.agents/skills/meta-skill-loop"; else bad "installed ~/.agents/skills/meta-skill-loop"; fi
 if [ -f "$HOME/.claude/skills/meta-skill-loop/SKILL.md" ]; then ok "Claude Code sees it"; else bad "Claude Code sees it"; fi
@@ -24,7 +24,7 @@ for f in references/feedback.md references/refine.md scripts/msl; do
   if [ -f "$s/$f" ]; then ok "installed with $f"; else bad "installed with $f"; fi
 done
 # A skill from another source, installed the same way, to manage below.
-npx -y skills@latest add "$REPO/tests/fixtures" --skill greeting --agent cursor claude-code codex -g -y >/dev/null 2>&1
+npx -y skills@latest add "$REPO/tests/fixtures" --skill greeting --agent cursor claude-code codex -g -y >/dev/null 2>&1 || bad "skills CLI install of the fixture"
 
 echo "first use from the installed skill"
 bash "$HOME/.agents/skills/meta-skill-loop/scripts/msl" init >/dev/null

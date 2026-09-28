@@ -1,6 +1,6 @@
 # Working on meta-skill-loop
 
-This repo is the public source of meta-skill-loop: three agent skills plus `msl`, the bash script they call. Start every session by reading `docs/handoff.md` (where things stand, what's decided, what's next), then `docs/design.md` before changing behavior. The code is the source of truth; if the docs disagree with it, trust the code and fix the docs. At the end of a session, rewrite `docs/handoff.md` for the next one.
+This repo is the public source of meta-skill-loop: one agent skill, and `msl`, the bash script it calls. Start every session by reading `docs/handoff.md` (where things stand, what's decided, what's next), then `docs/design.md` before changing behavior. The code is the source of truth; if the docs disagree with it, trust the code and fix the docs. At the end of a session, rewrite `docs/handoff.md` for the next one.
 
 ## Layout
 
