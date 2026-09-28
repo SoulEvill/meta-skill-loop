@@ -22,7 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: agent-tests
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - name: Install the agent CLI
         env:
           AGENT: ${{ inputs.agent }}
