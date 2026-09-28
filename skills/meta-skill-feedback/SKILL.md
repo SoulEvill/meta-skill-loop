@@ -48,7 +48,7 @@ If the `meta-skill-loop` skill isn't installed at all: tell the user (`npx skill
      - `## User said`: the user's own words, verbatim
      - `## Evidence`: the smallest excerpt that shows the problem (a few lines of output, a file:line, the instruction in the skill that caused it)
 
-   msl saves a copy of the whole conversation with the entry when the tool keeps it in a file (Claude Code and Codex do). In Cursor or any other tool, add a `## Conversation` section with the last few exchanges, trimmed.
+   In Claude Code, msl saves a copy of the whole conversation with the entry by itself. In Cursor, Codex, or any other tool, add a `## Conversation` section with the last few exchanges, trimmed (or, if you know the file your tool keeps this conversation in, pass it with `--session <file>`).
 
    Leave out secrets, credentials, tokens, customer data, and anything the user wouldn't want stored. When unsure, summarize instead of quoting.
 

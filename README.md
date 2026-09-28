@@ -96,7 +96,7 @@ msl update <name> [--check | --apply | --abort | --take-upstream]
   - `copies-differ`: the same skill is installed in several tool folders, and two were edited differently. (An edit in any one copy is simply a live edit; keeping it updates every copy.)
   - `missing`: the folder is gone.
 - **Feedback entries** are one Markdown file each, with ids like `fb-k3x9a2-012`: this workspace's id plus a sequence number. The header records the title, the version the feedback was about, when, the tool, a pointer to the saved conversation, the severity (`P0` harmful, `P1` wrong result, `P2` worked badly, `P3` minor, `nit`), the status (`open`, `applied`, `declined`), and `fixed_in` (the version that fixed it). The body is free-form: usually what was asked, observed, and expected, what the user said, and evidence. The full format is in [design.md](docs/design.md#5-data-model).
-- **Conversations.** When the tool keeps the conversation in a file (Claude Code, Codex), a copy is saved in `~/.meta-skill-loop/sessions/` with the feedback, since tools delete old ones. In Cursor, the entry itself carries the relevant exchanges.
+- **Conversations.** In Claude Code, a copy of the current conversation is saved in `~/.meta-skill-loop/sessions/` with the feedback, since tools delete old ones. msl only copies a conversation it can identify for certain, so in Cursor and Codex the entry itself carries the relevant exchanges (or the agent passes `--session <file>`).
 - **Privacy.** Feedback and conversation copies can contain work details. The workspace is local; never push it anywhere public.
 
 ## Good to know

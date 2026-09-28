@@ -2,6 +2,7 @@
 # End-to-end tests for msl, run in a throwaway $HOME.
 # TEST_BASH picks the interpreter under test (CI uses /bin/bash 3.2 on macOS).
 set -euo pipefail
+export TZ=UTC   # history dates are compared with `date -u`
 
 REPO="$(cd "$(dirname "$0")/.." && pwd -P)"
 SH="${TEST_BASH:-bash}"
@@ -99,19 +100,21 @@ has "list --all shows every entry" "$(msl feedback list grill-me --all)" "title:
 check "mark rejects an unknown status" fails msl feedback mark "$(fb 002)" candidate
 
 echo "conversation copies"
-proj="$HOME/.claude/projects/$(pwd -P | sed 's/[^A-Za-z0-9]/-/g')"   # physical path, as tools record it
-mkdir -p "$proj" && echo '{"old":1}' > "$proj/old.jsonl" && sleep 1 && echo '{"turn":"record this"}' > "$proj/cur.jsonl"
-out="$(echo x | msl feedback add grill-me -t s1 --tool claude-code)"
-has "claude code: the current conversation is copied" "$out" "conversation saved: ~/.meta-skill-loop/sessions/cur.jsonl"
-check "the copy is kept in the workspace" grep -q 'record this' "$HOME/.meta-skill-loop/sessions/cur.jsonl"
-check "the entry points to the copy" grep -q '^session: ~/.meta-skill-loop/sessions/cur.jsonl$' "$HOME/.meta-skill-loop/skills/grill-me/feedback/$(fb 003).md"
-echo '{"turn":"by id"}' > "$proj/abc-123.jsonl"; touch -t 200001010000 "$proj/abc-123.jsonl"
-has "claude code: the session id wins over the newest file" "$(echo x | CLAUDE_CODE_SESSION_ID=abc-123 msl feedback add grill-me -t s2)" "sessions/abc-123.jsonl"
-check "inside claude code the tool is detected" grep -q '^tool: claude-code$' "$HOME/.meta-skill-loop/skills/grill-me/feedback/$(fb 004).md"
-mkdir -p "$HOME/.codex/sessions/2026/09/28" && echo '{}' > "$HOME/.codex/sessions/2026/09/28/rollout-1.jsonl"
-has "codex: the newest rollout is copied" "$(echo x | msl feedback add grill-me -t s3 --tool codex)" "sessions/rollout-1.jsonl"
-has "cursor: says there is no file to copy" "$(echo x | msl feedback add grill-me -t s4 --tool cursor)" "no conversation file to copy for cursor"
-lacks "--session none skips the copy" "$(echo x | msl feedback add grill-me -t s5 --tool claude-code --session none)" "conversation saved"
+mkdir -p "$HOME/.claude/projects/some-project"
+echo '{"turn":"record this"}' > "$HOME/.claude/projects/some-project/cur-id.jsonl"
+sleep 1; echo '{"turn":"another chat"}' > "$HOME/.claude/projects/some-project/other-chat.jsonl"
+out="$(echo x | CLAUDE_CODE_SESSION_ID=cur-id msl feedback add grill-me -t s1)"
+has "claude code: the current conversation is copied" "$out" "conversation saved: ~/.meta-skill-loop/sessions/cur-id.jsonl"
+check "the copy is kept in the workspace" grep -q 'record this' "$HOME/.meta-skill-loop/sessions/cur-id.jsonl"
+check "the entry points to the copy" grep -q '^session: ~/.meta-skill-loop/sessions/cur-id.jsonl$' "$HOME/.meta-skill-loop/skills/grill-me/feedback/$(fb 003).md"
+check "inside claude code the tool is detected" grep -q '^tool: claude-code$' "$HOME/.meta-skill-loop/skills/grill-me/feedback/$(fb 003).md"
+check "a newer, unrelated conversation is not taken" test ! -e "$HOME/.meta-skill-loop/sessions/other-chat.jsonl"
+mkdir -p "$HOME/.codex/sessions/2026/09/28" && echo '{"turn":"codex chat"}' > "$HOME/.codex/sessions/2026/09/28/rollout-1.jsonl"
+has "without a known current session nothing is guessed" "$(echo x | msl feedback add grill-me -t s2 --tool codex)" "no conversation copied"
+check "so no unrelated conversation is stored" test ! -e "$HOME/.meta-skill-loop/sessions/rollout-1.jsonl"
+has "an explicit --session file is copied" "$(echo x | msl feedback add grill-me -t s3 --tool codex --session "$HOME/.codex/sessions/2026/09/28/rollout-1.jsonl")" "sessions/rollout-1.jsonl"
+has "cursor: says nothing was copied" "$(echo x | msl feedback add grill-me -t s4 --tool cursor)" "no conversation copied"
+lacks "--session none skips the copy" "$(echo x | CLAUDE_CODE_SESSION_ID=cur-id msl feedback add grill-me -t s5 --session none)" "conversation saved"
 for n in 003 004 005 006 007; do msl feedback mark "$(fb $n)" declined >/dev/null; done
 
 echo "edit, keep, discard, restore"
@@ -187,9 +190,13 @@ echo "copies"
 skill "$HOME/.agents/skills/multi" multi
 skill "$HOME/.claude/skills/multi" multi
 has "add records every installed copy" "$(msl add multi)" ".claude/skills/multi"
+echo "SECRET=1" > "$HOME/.claude/skills/multi/.env"
+mkdir -p "$HOME/.claude/skills/multi/.git" && echo "ref: refs/heads/main" > "$HOME/.claude/skills/multi/.git/HEAD"
 echo "extra" >> "$HOME/.agents/skills/multi/SKILL.md"
 msl keep multi -m extra >/dev/null
 check "keep propagates to other copies" grep -q extra "$HOME/.claude/skills/multi/SKILL.md"
+check "syncing a copy keeps its dotfiles" test -f "$HOME/.claude/skills/multi/.env"
+check "and its own .git" test -f "$HOME/.claude/skills/multi/.git/HEAD"
 echo "edited in the other copy" >> "$HOME/.claude/skills/multi/SKILL.md"
 has "an edit in any copy is a live edit" "$(state_of multi)" "changed"
 has "diff shows an edit made in the other copy" "$(msl diff multi)" "+edited in the other copy"
@@ -200,6 +207,8 @@ echo "edit A" >> "$HOME/.agents/skills/multi/SKILL.md"
 echo "edit B" >> "$HOME/.claude/skills/multi/SKILL.md"
 has "copies edited differently are a conflict" "$(state_of multi)" "copies-differ"
 check "keep refuses to pick a copy by itself" fails msl keep multi -m x
+check "discard refuses too (it could save only one copy)" fails msl discard multi
+check "both copies keep their edits" grep -q "edit B" "$HOME/.claude/skills/multi/SKILL.md"
 msl keep multi -m "take B" --from "$HOME/.claude/skills/multi" >/dev/null
 check "keep --from takes the chosen copy" grep -q "edit B" "$HOME/.agents/skills/multi/SKILL.md"
 has "the chosen copy is the new version" "$(version_of multi)" "v4"
@@ -355,6 +364,94 @@ msl update relinked --no-fetch >/dev/null
 check "recording it leaves the skill in place, not empty" test -f "$HOME/.agents/skills/relinked/SKILL.md"
 has "and your version stays live" "$(cat "$HOME/.claude/skills/relinked/SKILL.md")" "Mine."
 
+echo "review fixes"
+# A pending merge is applied only if nothing changed since it was prepared.
+skill "$HOME/.agents/skills/pending" pending "Line one.
+
+Line two."
+lock pending 111111111111
+msl add pending >/dev/null
+sed 's/^Line one.$/Line one, refined./' "$HOME/.agents/skills/pending/SKILL.md" > "$HOME/x" && mv "$HOME/x" "$HOME/.agents/skills/pending/SKILL.md"
+msl keep pending -m refined >/dev/null
+skill "$HOME/.agents/skills/pending" pending "Line one.
+
+Line two, upstream."
+lock pending 222222222222
+msl update pending --no-fetch >/dev/null
+echo "Edited during the review." >> "$HOME/.agents/skills/pending/SKILL.md"
+check "apply refuses when the skill changed during the review" fails msl update pending --apply
+has "and the new edit is untouched" "$(cat "$HOME/.agents/skills/pending/SKILL.md")" "Edited during the review."
+has "and no version was made" "$(version_of pending)" "v2"
+msl update pending --abort >/dev/null
+msl discard pending >/dev/null
+msl update pending --no-fetch >/dev/null
+has "a fresh review applies" "$(msl update pending --apply)" "v3: pending now runs upstream 222222222222"
+
+# A git repo's committed content is upstream; uncommitted refinements never leak into it.
+mkdir -p "$HOME/team2/.cursor/skills/rules" && git -C "$HOME/team2" init -q
+skill "$HOME/team2/.cursor/skills/rules" rules "Base rule."
+echo "other v1" > "$HOME/team2/.cursor/skills/rules/other.md"
+git -C "$HOME/team2" add -A && git -C "$HOME/team2" -c user.name=t -c user.email=t@t commit -qm init
+(cd "$HOME/team2" && msl add rules >/dev/null)
+echo "My local rule." >> "$HOME/team2/.cursor/skills/rules/SKILL.md"
+msl keep rules -m "local rule" >/dev/null
+for n in 2 3; do
+  echo "other v$n" > "$HOME/team2/.cursor/skills/rules/other.md"
+  git -C "$HOME/team2" -c user.name=t -c user.email=t@t commit -qm "pull $n" -- .cursor/skills/rules/other.md
+  out="$(msl update rules)"
+  lacks "pull $n: your uncommitted refinement is still seen as yours" "$out" "you had no refinements"
+  msl update rules --apply >/dev/null
+  has "pull $n: the refinement survives" "$(cat "$HOME/team2/.cursor/skills/rules/SKILL.md")" "My local rule."
+  has "pull $n: the teammate's change is in" "$(cat "$HOME/team2/.cursor/skills/rules/other.md")" "other v$n"
+done
+lacks "upstream never contains the local refinement" "$(msl git rules show upstream:SKILL.md)" "My local rule."
+
+# A version is never claimed if git can't record it.
+msl git tooling config commit.gpgsign true && msl git tooling config gpg.program false
+echo "unsigned edit" >> "$HOME/.agents/skills/tooling/SKILL.md"
+tfid="$(echo x | msl feedback add tooling -t signing | awk 'NR == 1 { print $1 }')"
+check "keep fails when git can't commit" fails msl keep tooling -m signed --fixes "$tfid"
+has "no version was claimed" "$(version_of tooling)" "v12*"
+check "the feedback stays open" grep -q '^status: open$' "$HOME/.meta-skill-loop/skills/tooling/feedback/$tfid.md"
+has "the edit is still live" "$(cat "$HOME/.agents/skills/tooling/SKILL.md")" "unsigned edit"
+msl git tooling config --unset commit.gpgsign && msl git tooling config --unset gpg.program
+msl discard tooling >/dev/null
+
+# --fixes must name feedback on the skill being kept.
+echo "B change" >> "$HOME/.agents/skills/linked/SKILL.md"
+check "keep refuses feedback from another skill" fails msl keep linked -m x --fixes "$tfid"
+has "and makes no version" "$(version_of linked)" "v2*"
+msl discard linked >/dev/null
+
+# One command at a time per skill; a stale lock from a crashed run is cleared.
+for i in 1 2 3; do
+  echo "par $i" >> "$HOME/.agents/skills/tooling/SKILL.md"
+  ( msl keep tooling -m "par $i" >/dev/null 2>&1 ) &
+  ( msl diff tooling v1 >/dev/null 2>&1 ) &
+  wait
+done
+has "keeps racing with diffs record every edit" "$(msl git tooling show mine:SKILL.md)" "par 3"
+has "and leave the skill clean" "$(state_of tooling)" "clean"
+mkdir -p "$HOME/.meta-skill-loop/skills/tooling/lock" && echo 999999 > "$HOME/.meta-skill-loop/skills/tooling/lock/pid"
+has "a stale lock doesn't block" "$(state_of tooling)" "clean"
+check "and is released afterwards" test ! -e "$HOME/.meta-skill-loop/skills/tooling/lock"
+
+# Feedback ids are unique across skills, even when logged at the same moment.
+for i in 1 2 3 4 5 6; do
+  ( echo x | msl feedback add tooling -t "a$i" >/dev/null 2>&1 ) &
+  ( echo x | msl feedback add linked -t "b$i" >/dev/null 2>&1 ) &
+done
+wait
+check "parallel feedback on two skills gets distinct ids" test -z "$(find "$HOME/.meta-skill-loop/skills" -name 'fb-*.md' | sed 's#.*/##' | sort | uniq -d)"
+
+# The skills CLI lock speaks only for folders the CLI installed.
+skill "$HOME/.agents/skills/shared-name" shared-name "The public one."
+lock shared-name 333333333333
+mkdir -p "$HOME/team3/.cursor/skills" && git -C "$HOME/team3" init -q
+skill "$HOME/team3/.cursor/skills/shared-name" shared-name "The team's own."
+git -C "$HOME/team3" add -A && git -C "$HOME/team3" -c user.name=t -c user.email=t@t commit -qm init
+has "a team skill sharing a name with a CLI install is a git skill" "$(msl add "$HOME/team3/.cursor/skills/shared-name")" "added shared-name (git"
+
 echo "remove"
 skill "$HOME/.agents/skills/tmp-skill" tmp-skill
 orig="$(cat "$HOME/.agents/skills/tmp-skill/SKILL.md")"
@@ -363,7 +460,7 @@ msl remove tmp-skill >/dev/null
 check "remove leaves the skill untouched" test "$(cat "$HOME/.agents/skills/tmp-skill/SKILL.md")" = "$orig"
 has "remove archives the data" "$(ls "$HOME/.meta-skill-loop/archive")" "tmp-skill"
 check "remove stops managing it" fails msl status tmp-skill
-check "remove keeps the conversation copies" test -f "$HOME/.meta-skill-loop/sessions/cur.jsonl"
+check "remove keeps the conversation copies" test -f "$HOME/.meta-skill-loop/sessions/cur-id.jsonl"
 
 echo "launcher follows the installed skill"
 hub="$HOME/.agents/skills/meta-skill-loop/scripts/msl"

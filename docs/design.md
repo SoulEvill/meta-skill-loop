@@ -52,10 +52,12 @@ The workspace format is versioned (`format:` in `workspace.yaml`), so a later re
   workspace.yaml                     format: 1, id: k3x9a2 (random, created once; used in feedback ids), created
   bin/msl                            a launcher that runs scripts/msl from the installed meta-skill-loop skill
   sessions/                          copies of the conversations feedback was logged in
+  ids/                               feedback ids handed out (keeps them unique across skills)
   skills/<name>/
     skill.yaml                       name, kind (local|skills-cli|git), source_url, source_path, added, paths (primary first)
     git/                             the skill's version history (git dir; its working tree is the live skill folder)
     feedback/fb-k3x9a2-007.md        one file per entry
+    lock/                            only while an msl command is working on the skill
     merge/                           only while an upstream merge waits for review (a temporary git worktree)
   archive/                           data of skills you stopped managing
 ```
@@ -68,9 +70,11 @@ The workspace format is versioned (`format:` in `workspace.yaml`), so a later re
   mine:         v1 ── v2 ── v3 ─────────── v4 (merge)    what the tools load = upstream + your refinements
 ```
 
+- **A skill in a git repo:** `upstream` is the repo's committed content at HEAD (exported with `git archive`), never the folder itself, because the folder also holds the user's uncommitted refinements. So a pull that touches other files still shows the refinements as theirs, and the update merges them for review.
 - The git dir sits in the workspace with `core.worktree` pointing at the live folder, so the folder **is** the working tree of `mine`. There's nothing to re-point, tools never see a `.git`, and installers can overwrite files without destroying history. Dotfiles are ignored.
 - Every commit on `mine` is a version and is tagged `v1`, `v2`, …. The subject says what changed; an `Upstream-Rev: <rev>` trailer records which upstream a version is based on.
 - Changes in the live folder that aren't a version yet are "live edits". Each `msl` call that sees them saves them with `git stash`, so nothing unversioned can be lost. `discard` throws them away and `restore` re-applies the latest saved ones.
+- **Safety.** One msl command at a time per skill (a lock in `skills/<name>/lock`, cleared if its process is gone). Syncing copies touches only skill files, never a copy's dotfiles or `.git`. A pending update is applied only if the version and the folder are unchanged since the merge was prepared. A version is claimed only after git has recorded it. Feedback ids are reserved workspace-wide in `ids/`, and `--fixes` accepts only feedback on the skill being changed.
 - **Copies.** A skill installed in several tool folders (the `skills` CLI puts one in `~/.agents/skills` and one in `~/.claude/skills`) is one managed skill with several `paths`. msl keeps them identical. An edit in any one copy is a live edit: that copy becomes the primary (the repo's working tree), and keeping it updates the others. Two copies edited differently are a conflict (`copies-differ`) that the user resolves with `keep --from <path>`.
 
 **Feedback entry.** Header fields are what msl reads and filters on; the body is free-form for people and agents.
@@ -107,7 +111,7 @@ fixed_in: v4                  # set by msl when applied; rollback reads it to re
 
 - One file per entry means no append races between concurrent sessions, easy deduplication, and sharing later by copying files. `msl feedback add` is the **single writer**: it assigns ids, stamps the version and time, and validates fields.
 - **Which feedback a version fixed** lives only in the entries (`fixed_in`). History, rollback, and revert read it from there, so linking an entry after the fact (`feedback mark <id> applied --fixed-in v4`) works the same as `keep --fixes`.
-- **Conversations.** Tools delete old conversations (Claude Code after 30 days by default), so msl copies the file into `sessions/` and points to the copy. Claude Code: the file named by `CLAUDE_CODE_SESSION_ID`, else the newest one for the current folder in `~/.claude/projects/`. Codex: the newest `~/.codex/sessions/**/rollout-*.jsonl`. Cursor keeps chats in its own database, so the agent writes the relevant exchanges into the entry instead. A later feedback entry from the same conversation refreshes the same copy.
+- **Conversations.** Tools delete old conversations (Claude Code after 30 days by default), so msl copies the file into `sessions/` and points to the copy. Only a conversation msl can identify for certain is copied: in Claude Code, the file named by `CLAUDE_CODE_SESSION_ID`; anywhere, a file passed with `--session`. Guessing ("the newest conversation file") could attach an unrelated chat, so without an identity the agent writes the relevant exchanges into the entry instead (Cursor keeps chats in its own database; Codex's current-session identity isn't verified yet). A later feedback entry from the same conversation refreshes the same copy.
 
 **Who else writes the folder** (decided at `add`) determines how an upstream update is recognized:
 
