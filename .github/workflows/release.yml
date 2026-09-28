@@ -1,6 +1,6 @@
 name: release
 
-# Publishing a version = pushing a tag like v0.2.0 on a commit that is already on main.
+# Publishing a version = pushing a tag like v0.3.0 on a commit that is already on main.
 # Users install from main, or pin a release tag. Protect v* tags with a ruleset so only
 # maintainers can create them (see docs/maintaining.md).
 on:

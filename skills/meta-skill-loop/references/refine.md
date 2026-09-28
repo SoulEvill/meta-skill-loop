@@ -22,14 +22,14 @@ Turn a skill's accumulated feedback into a small, approved change, and record it
    2. Doesn't run the tests before reviewing (fb-k3x9a2-021, P3): single entry
    ```
 
-   A single entry is a data point, not a pattern. Propose a change for it only if it's `P0` or `P1`, or the user asks.
+   A single entry is a data point, not a pattern. Propose a change for it only if it's `P0` or `P1`, or the user asks. If no theme qualifies, show the brief and ask which to act on.
 
 4. **Propose the smallest edit per theme.** Show a diff, or before and after, of exactly what would change. Keep the skill's voice and structure. Sharpen existing instructions rather than adding sections, and never rewrite the whole skill.
    - If the user has a skill-authoring skill (for example, a skill creator), you may hand it the brief and let it draft the edit. Either way, show the proposal before changing anything.
    - If the feedback suggests the skill is fundamentally wrong for the job, say so and let the user decide.
 
-5. **Apply only after approval.** Edit the files in the skill's folder. Then run `msl diff <name>` to confirm the change. It's now a live edit, not yet a version. Ask the user:
-   - **Keep it now:** `msl keep <name> -m "<what changed>" --fixes fb-…,fb-…`. This creates the next version and marks those entries applied. Use one keep per theme, so each version maps cleanly to its feedback.
+5. **Apply only after approval, one theme at a time.** Edit the files in the skill's folder for one theme. Then run `msl diff <name>` to confirm the change. It's now a live edit, not yet a version. Ask the user:
+   - **Keep it now:** `msl keep <name> -m "<what changed>" --fixes fb-…,fb-…`. This creates the next version and marks those entries applied. `keep` takes every live edit, so keep one theme before applying the next; each version then maps cleanly to its feedback.
    - **Try it first:** leave it live. Later, "keep it" or "discard it" (`msl discard <name>`; `msl restore <name>` brings it back).
 
    For feedback the user decides not to act on, run `msl feedback mark <id> declined`.

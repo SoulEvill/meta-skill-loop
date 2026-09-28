@@ -50,7 +50,8 @@ You can also ask:
   Your feedback and versions stay in `~/.meta-skill-loop` until you delete it.
 - **Upgrading from 0.2** (three skills): remove the two old ones,
   `npx skills@latest remove meta-skill-feedback meta-skill-refine -g`, and, if you added
-  it, the rules line that mentions meta-skill-feedback.
+  it, the line that mentions meta-skill-feedback from your agent's rules (Cursor User
+  Rules, `~/.claude/CLAUDE.md`, or `~/.codex/AGENTS.md`).
 
 How it works: [docs/design.md](docs/design.md). Contributing: [AGENTS.md](AGENTS.md).
 

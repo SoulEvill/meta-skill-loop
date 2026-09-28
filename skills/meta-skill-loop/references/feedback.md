@@ -4,11 +4,12 @@ Capture one piece of feedback about a skill as an entry, then get back to what t
 
 ## Steps
 
-1. **Identify the skill.** Usually the user names it. If not, it's the skill you used earlier in this conversation.
-   - If more than one skill was involved, or none obviously was, ask which one. Use the skill's `name` from its frontmatter.
+1. **Identify the skill and the problem.** Usually the user names the skill. If not, it's the skill you used earlier in this conversation, and you name it when you confirm.
+   - If more than one skill was involved, or none obviously was, ask which one. Never guess. Use the skill's `name` from its frontmatter.
+   - If the user hasn't said what went wrong, in this request or just before it, ask in one line. Don't build the entry from earlier turns on your own.
    - If that skill only hands off to another skill (for example, "use the grilling skill"), log the feedback on the skill whose instructions actually produced the behavior.
 
-2. **Make sure it's managed.** Run `msl status <name>`. If it isn't managed, run `msl add <name>` and tell the user in one line that it's now managed. The skill itself is not modified.
+2. **Make sure it's managed.** Run `msl status <name>`. If it isn't managed, run `msl add <name>` and tell the user in one line that it's now managed. The skill itself is not modified. If `msl add` finds no skill by that name (a typo, or not installed), run `msl add` with no name and ask the user which one they meant.
 
 3. **Write the entry.**
    - **Title:** one line naming the problem, e.g. "Buries the real bug under style nits".
@@ -29,7 +30,7 @@ Capture one piece of feedback about a skill as an entry, then get back to what t
      - `## User said`: the user's own words, verbatim
      - `## Evidence`: the smallest excerpt that shows the problem (a few lines of output, a file:line, the instruction in the skill that caused it)
 
-   In Claude Code, msl saves a copy of the whole conversation with the entry by itself. In Cursor, Codex, or any other tool, add a `## Conversation` section with the last few exchanges, trimmed (or, if you know the file your tool keeps this conversation in, pass it with `--session <file>`).
+   In Claude Code, msl saves a copy of the whole conversation with the entry by itself. In Cursor, Codex, or any other tool, if the skill ran in this conversation, add a `## Conversation` section with the last few exchanges, trimmed (or, if you know the file your tool keeps this conversation in, pass it with `--session <file>`).
 
    Leave out secrets, credentials, tokens, customer data, and anything the user wouldn't want stored. When unsure, summarize instead of quoting.
 
@@ -61,7 +62,7 @@ Capture one piece of feedback about a skill as an entry, then get back to what t
 ## Notes
 
 - Log one entry per distinct problem. If the user gives several unrelated complaints, log several entries.
-- If the same problem was already logged (`msl feedback list <name>`), say so. Only log it again if there's new evidence; repeated entries show a pattern.
+- If the same problem was already logged (`msl feedback list <name>`), log it anyway, since the user asked and a repeat shows a pattern, and mention the earlier entry's id.
 - If writing is blocked (a sandbox, or a permission prompt the user declines), show the full `msl feedback add …` command so the user can run it.
 - Don't fix the skill here, even if the fix looks obvious. Suggest "refine <skill>" instead.
-- Log only what the user asked you to log. Don't add entries of your own for other problems you noticed; mention them, and let the user decide.
+- Log only what the user asked you to log, and don't suggest logging anything else.

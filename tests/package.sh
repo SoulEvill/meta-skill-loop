@@ -13,7 +13,7 @@ bad() { printf '  FAIL %s\n' "$1"; [ -z "${2:-}" ] || printf '%s\n' "$2" | sed '
 
 echo "skills CLI install"
 # The CLI colors its output on CI (Found \e[32m1\e[39m skill); compare plain text.
-out="$(npx -y skills@latest add "$REPO" --list 2>&1 | sed "s/$(printf '\033')\[[0-9;]*m//g" || true)"
+out="$(npx -y skills@latest add "$REPO" --list 2>&1 | sed "s/$(printf '\033')\[[0-9;?]*[A-Za-z]//g" || true)"
 if grep -qF "Found 1 skill" <<<"$out" && grep -qE '^[^A-Za-z]*meta-skill-loop[[:space:]]*$' <<<"$out"; then ok "package is one skill, meta-skill-loop"; else bad "package is one skill, meta-skill-loop" "$out"; fi
 # The README's install: one real folder in ~/.agents/skills, a link for Claude Code.
 npx -y skills@latest add "$REPO" --skill meta-skill-loop --agent cursor claude-code codex -g -y >/dev/null 2>&1 || bad "skills CLI install"

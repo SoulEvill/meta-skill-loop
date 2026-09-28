@@ -587,11 +587,29 @@ EOF
 # meta-skill-loop itself, and the two skills that versions before 0.3 shipped alongside it.
 own_skill() { case "$1" in meta-skill-loop|meta-skill-feedback|meta-skill-refine) return 0 ;; esac; return 1; }
 
+# Those two skills survive a reinstall or `npx skills update -g -y`, and their descriptions
+# still offer to log feedback unasked (0.3 stopped that), so wherever msl lists skills it
+# says how to remove each one: -g for a user-level install, the folder for a project's.
+leftover_notes() {
+  local name path out=""
+  while IFS="$TAB" read -r name path; do
+    case "$name" in meta-skill-feedback|meta-skill-refine) ;; *) continue ;; esac
+    if in_user_root "$path"; then
+      out="${out}note: $name ($(tilde "$path")) is left over from meta-skill-loop 0.2, now one skill. Remove it: npx skills@latest remove $name -g$NL"
+    else
+      out="${out}note: $name ($(tilde "$path")) is left over from meta-skill-loop 0.2, now one skill. Delete that folder, or run npx skills@latest remove $name in that project.$NL"
+    fi
+  done <<EOF
+$(all_skills)
+EOF
+  [ -z "$out" ] || printf '\n%s      If you added it, also remove the line mentioning meta-skill-feedback from your agent rules (Cursor User Rules, ~/.claude/CLAUDE.md, ~/.codex/AGENTS.md).\n' "$out"
+}
+
 list_installed() {
   local found=0 new=0 name path mark rows=""
   while IFS="$TAB" read -r name path; do
     [ -n "$name" ] || continue
-    own_skill "$name" && continue
+    if own_skill "$name" && ! is_managed "$name"; then continue; fi
     found=$((found + 1))
     if is_managed "$name"; then mark="managed"; else mark="new"; new=$((new + 1)); fi
     rows="$rows$(printf '%-8s %-28s %s' "$mark" "$name" "$(tilde "$path")")
@@ -599,8 +617,14 @@ list_installed() {
   done <<EOF
 $(all_skills)
 EOF
-  printf '%s' "$rows" | LC_ALL=C sort -s -k1,1r -k2,2
-  printf '\n%s skill folders found, %s not managed yet. Add one: msl add <name>\n' "$found" "$new"
+  if [ "$found" = 0 ]; then
+    printf 'No skills found in ~/.agents/skills, ~/.cursor/skills, ~/.claude/skills, ~/.codex/skills, or this repo'"'"'s. Add one by path: msl add <path>\n'
+  else
+    printf '%s' "$rows" | LC_ALL=C sort -s -k1,1r -k2,2
+    if [ "$found" = 1 ]; then printf '\n1 skill folder found' ; else printf '\n%s skill folders found' "$found"; fi
+    printf ', %s not managed yet. Add one: msl add <name>\n' "$new"
+  fi
+  leftover_notes
 }
 
 cmd_add() {
@@ -774,7 +798,7 @@ EOF
 }
 
 cmd_status() {
-  local name state ver lives links unmanaged=0 leftover=0 rows=0 notes=""
+  local name state ver lives links unmanaged=0 rows=0 notes=""
   if [ $# -gt 0 ]; then
     is_managed "$1" || { printf "'%s' is not managed; add it with: msl add %s\n" "$1" "$1"; return 1; }
   fi
@@ -800,15 +824,13 @@ cmd_status() {
   [ -z "$notes" ] || printf '\n%s\n' "$notes"
   if [ $# -eq 0 ]; then
     while IFS="$TAB" read -r name _; do
-      case "$name" in meta-skill-feedback|meta-skill-refine) leftover=1 ;; esac
       if [ -z "$name" ] || own_skill "$name"; then continue; fi
       is_managed "$name" || unmanaged=$((unmanaged + 1))
     done <<EOF
 $(all_skills)
 EOF
     [ "$unmanaged" = 0 ] || printf '\n%s installed skill folder(s) not managed yet: msl add\n' "$unmanaged"
-    # Their descriptions still offer to log feedback unasked, which 0.3 stopped doing.
-    [ "$leftover" = 0 ] || printf '\nnote: meta-skill-feedback and meta-skill-refine are left over from meta-skill-loop 0.2 (now one skill). Remove them: npx skills@latest remove meta-skill-feedback meta-skill-refine -g\n'
+    leftover_notes
   fi
   return 0
 }

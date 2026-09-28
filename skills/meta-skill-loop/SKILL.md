@@ -1,6 +1,6 @@
 ---
 name: meta-skill-loop
-description: Feedback and version history for agent skills. Use when the user asks to log or record feedback on a skill ("log feedback on pr-review", "feedback on grill-me", "record this for the skill"), to refine or improve a skill from its feedback, to see a skill's versions or what changed, to undo a change or go back to a version, to keep or discard edits to a skill, to update a skill from upstream, to add or stop managing skills, or says "meta-skill-loop" or "msl". Log feedback only when the user explicitly asks to; don't suggest logging feedback otherwise.
+description: Feedback and version history for agent skills. Use when the user asks to log or record feedback on a skill ("log feedback on pr-review", "feedback on grill-me", "record this for the skill"), to refine or improve a skill from its feedback, to see their skills' status or open feedback, to see a skill's versions or what changed, to undo a change or go back to a version, to keep or discard edits to a skill, to update a skill from upstream, to add or stop managing skills, or says "meta-skill-loop" or "msl". Log feedback only when the user explicitly asks to; don't suggest logging feedback otherwise.
 ---
 
 # meta-skill-loop
@@ -17,7 +17,7 @@ bash ~/.claude/skills/meta-skill-loop/scripts/msl init
 bash ~/.cursor/skills/meta-skill-loop/scripts/msl init
 ```
 
-If none works, use the folder your tool loaded this skill from: `bash <that folder>/scripts/msl init`.
+If none works, use the folder your tool loaded this skill from: `bash <that folder>/scripts/msl init`. If `init` fails because it can't write (a sandbox), don't try the others: see the last rule below.
 
 **Versions work like git.** Changes in a skill folder are *live edits* until `msl keep` makes them the next version (v2, v3, …). `msl discard` throws them away; they're saved, and `msl restore` brings them back. A skill installed with the `skills` CLI also tracks the published *upstream* versions, and updates are merged into the user's version instead of overwriting it. Each skill has one real folder; other tool folders link to it, so an edit reaches every tool.
 

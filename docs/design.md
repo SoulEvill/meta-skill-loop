@@ -1,6 +1,6 @@
 # meta-skill-loop: design
 
-Status: v1.1 · 2026-09-28
+Status: release 0.3.0 (phase 1.1) · 2026-09-28. Roadmap phases are named "phase" so they don't clash with skill versions (v1, v2, …) or release numbers (0.3.0).
 
 ## 1. Problem
 
@@ -22,7 +22,7 @@ It is **not** a skill authoring tool (use Cursor `/create-skill`, Anthropic's `s
 
 | Layer | Job | Where it lives |
 |---|---|---|
-| **meta-skill-loop** | feedback, refine, versions, reviewed updates, status; (v2) contribute | this public repo + `~/.meta-skill-loop/` per user |
+| **meta-skill-loop** | feedback, refine, versions, reviewed updates, status; (phase 2) contribute | this public repo + `~/.meta-skill-loop/` per user |
 | **Packs** | share skills: one git repo per *audience* (team, personal, public), not one per skill | their own repos; installed per skill with `npx skills add <repo> --skill <name> -g` |
 | **Hub** (optional) | a personal "menu" skill that lists the skills you care about, grouped your way, and routes to them | a skill in your own pack; can show `msl status` as a health column |
 
@@ -146,9 +146,9 @@ A skill inside a git repo is `local` on purpose: git owns that folder's history,
 ## 7. Decisions and accepted limits (2026-09-28)
 
 - **Skills stay in place (no central store).** Considered: moving skills into the workspace and deploying copies. Rejected: two copies of everything, a deploy step, edits made in the tool's own UI getting overwritten, and it couldn't cover skills in team repos. Review-before-update is achieved instead through `msl update`.
-- **meta-skill-loop never edits a skill except to apply an approved change.** The v1 "nudge" line inside skills was removed.
+- **meta-skill-loop never edits a skill except to apply an approved change.** The phase-1 "nudge" line inside skills was removed.
 - **Capture is explicit (0.3).** Feedback is logged only when the user asks. Considered: the agent offering to log whenever the user corrects a skill, triggered by the skill's description (it worked in 3 of 3 Claude Code runs), a line in each tool's own rules, hooks, or a line inside each managed skill. Rejected for now: unasked-for offers are noise, rules and hooks are per tool and outside a skill's scope, and editing skills breaks "skills stay untouched". The real-agent test checks that a plain correction neither logs nor suggests logging.
-- **One skill (0.3).** meta-skill-loop is one skill: `SKILL.md` is the entry point and routes to `references/feedback.md` and `references/refine.md`, the shape of Anthropic's skill-creator. One thing to install, update, and remove, one description, one first-use block. Until 0.2 it was three skills (`meta-skill-loop`, `meta-skill-feedback`, `meta-skill-refine`); Neither a reinstall nor `npx skills update -g -y` removes them (the CLI asks only in a terminal), and their old descriptions still offer to log feedback unasked, so `msl` leaves them out of its lists and `msl status` shows the command to remove them. The README also tells upgraders to remove the rules line 0.2 suggested.
+- **One skill (0.3).** meta-skill-loop is one skill: `SKILL.md` is the entry point and routes to `references/feedback.md` and `references/refine.md`, the shape of Anthropic's skill-creator. One thing to install, update, and remove, one description, one first-use block. Until 0.2 it was three skills (`meta-skill-loop`, `meta-skill-feedback`, `meta-skill-refine`). Neither a reinstall nor `npx skills update -g -y` removes them (the CLI asks only in a terminal), and their old descriptions still offer to log feedback unasked, so `msl` leaves them out of its lists and `msl status` shows the command to remove them. The README also tells upgraders to remove the rules line 0.2 suggested.
 - **Accepted limits:**
   - Merging prose is fuzzy: the LLM proposes and the human validates.
   - A live edit applies to every session at once.
@@ -158,7 +158,7 @@ A skill inside a git repo is `local` on purpose: git owns that folder's history,
   - Conversation copies can be large (megabytes for a long session); they're kept whole for now and can be trimmed later.
   - In a skill that lives in a git repo, the user's refinements are uncommitted changes in that repo, so `git pull` may ask to commit or stash first. For a team skill, send the change to the repo.
 - **Designed for, not built:**
-  - Publishing feedback and versions to a remote (§8, v2). Feedback ids are unique across workspaces for this.
+  - Publishing feedback and versions to a remote (§8, phase 2). Feedback ids are unique across workspaces for this.
   - Syncing several machines: each skill's history can be pushed to one private remote under its own branch names, with no change to the local layout.
   - A richer review UI than the chat diff.
 
@@ -177,10 +177,10 @@ A skill inside a git repo is `local` on purpose: git owns that folder's history,
 
 ## 8. Roadmap
 
-- **v1:** capture, add, status, refine with approval.
-- **v1.1 (current):** per-skill git versions, keep/discard/restore, history, revert and rollback, review-gated `update`, unique feedback ids, conversation copies, no edits to skills except approved ones. The data format is versioned from here on.
-- **v2, publish:** `msl publish <skill>` sends a folder (the skill's latest version, the feedback entries the user approves after reviewing and redacting each section, and a small metadata file) to a remote named in `workspace.yaml`: a git repo, a synced folder, later other systems. The remote runs its own CI to aggregate everyone's feedback and publish an improved skill, which people install with the `skills` CLI and receive through `msl update`. Sending a refinement to the skill's own source as a PR is the same step with a different destination. Already in place for it: unique ids, `source_url`/`source_path`, one file per entry, a sectioned body.
-- **v3, learn automatically (opt-in, off by default):** a setting to capture feedback without being asked, for all skills or chosen ones (for example, offering to log when the user corrects a skill). Observers log candidates (`origin: observed`, `confidence`, a `candidate` status; old entries count as explicit), measured against the explicit entries.
+- **Phase 1:** capture, add, status, refine with approval.
+- **Phase 1.1 (current, releases 0.2–0.3):** per-skill git versions, keep/discard/restore, history, revert and rollback, review-gated `update`, unique feedback ids, conversation copies, no edits to skills except approved ones. The data format is versioned from here on.
+- **Phase 2, publish:** `msl publish <skill>` sends a folder (the skill's latest version, the feedback entries the user approves after reviewing and redacting each section, and a small metadata file) to a remote named in `workspace.yaml`: a git repo, a synced folder, later other systems. The remote runs its own CI to aggregate everyone's feedback and publish an improved skill, which people install with the `skills` CLI and receive through `msl update`. Sending a refinement to the skill's own source as a PR is the same step with a different destination. Already in place for it: unique ids, `source_url`/`source_path`, one file per entry, a sectioned body.
+- **Phase 3, learn automatically (opt-in, off by default):** a setting to capture feedback without being asked, for all skills or chosen ones (for example, offering to log when the user corrects a skill). The setting will live in `workspace.yaml` (`capture: explicit`, the meaning when it's absent, so today's workspaces need no migration) and per skill in `skill.yaml`. A skill's description is fixed text and can't read a setting, so the mechanism is still to choose: a hook per tool (deterministic, but tool-specific and outside the Agent Skills standard), or a broader description plus a check of the setting before offering. Observers log candidates (`origin: observed`, `confidence`, a `candidate` status; old entries count as explicit), measured against the explicit entries.
 - **Later, not designed yet:** a golden dataset and evals built from feedback (what was asked, what we want, what we don't).
 
 ## 9. Prior art (2026-09)
