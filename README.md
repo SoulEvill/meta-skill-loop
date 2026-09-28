@@ -102,6 +102,7 @@ msl update <name> [--check | --apply | --abort | --take-upstream]
 ## Good to know
 
 - **Skills that live in a git repo** (a team repo's `.cursor/skills`): pull as usual. meta-skill-loop records what the pull brought and never rewrites the repo's files to do so. Refinements to a team skill are uncommitted changes in that repo, so `git pull` may ask you to commit or stash them first. For a team skill, prefer sending the change to the repo.
+- **`npx skills update` and links.** The `skills` CLI's `update` has no `--copy` option: it reinstalls the Claude Code copy as a link to `~/.agents/skills`. Every tool still loads it, and meta-skill-loop treats the two paths as one folder.
 - **Two different skills with the same name** (say, your personal `pr-review` and a project's own): only one can be managed under that name. The other is left untouched, and `add` tells you how to switch.
 - **Your data** is plain folders in `~/.meta-skill-loop` (feedback files, conversation copies, and a small git repo per skill). Back it up like any folder. It stays on your machine. Conversation copies are the bulk of it; delete old ones in `sessions/` if it grows.
 - **Uninstall:** `npx skills remove meta-skill-loop meta-skill-feedback meta-skill-refine -g`. Your skills are untouched either way. Deleting `~/.meta-skill-loop` also deletes your feedback and version history.

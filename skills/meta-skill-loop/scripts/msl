@@ -68,9 +68,11 @@ dir_hash() {
   done | sha256 | cut -c1-12
 }
 
-# Replace $2 with a copy of skill folder $1.
+# Replace $2 with a copy of skill folder $1 (never onto itself: installers may
+# turn one copy into a symlink to another).
 copy_tree() {
   local src="$1" dst="$2" f
+  [ "$(abspath "$src")" != "$(abspath "$dst")" ] || return 0
   rm -rf "$dst"
   mkdir -p "$dst"
   skill_files "$src" | while IFS= read -r f; do
@@ -385,7 +387,7 @@ has_refinements() {
 sync_mirrors() { # name
   local p
   while IFS= read -r p; do
-    if [ -n "$p" ] && [ "$p" != "$PRIMARY" ] && [ -f "$p/SKILL.md" ]; then copy_tree "$PRIMARY" "$p"; fi
+    if [ -n "$p" ] && [ "$p" != "$PRIMARY" ] && [ -d "$p" ]; then copy_tree "$PRIMARY" "$p"; fi
   done <<EOF
 $(meta_paths "$1")
 EOF

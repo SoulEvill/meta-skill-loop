@@ -13,7 +13,7 @@ _Last updated: 2026-09-28, after the foundation review._
   - **CLI:** `discard`/`restore` (were undo/redo), `revert` (was `rollback --only`), `add` with no name lists skills (replaced `scan`), `update --check` shows what's coming (replaced `diff --incoming`), `--fixes` on both keep and update. Removed: `add-path`, `import-upstream`, `update --ff-only`, the legacy-workspace check.
   - **`install.sh` removed.** The only install is `npx skills add`; without Node, copy the folders.
   - **Bug fixed:** an edit made in a second installed copy (for example Claude Code's `~/.claude/skills`) was overwritten by `keep`. Now any edited copy becomes the live edit; copies edited differently are a conflict resolved with `keep --from`.
-- **Tests:** `tests/run.sh` (139, bash 5 and 3.2, always with a space in `$HOME`), skills lint, a real `skills` CLI install, and a real Claude Code agent test. CI runs the first three on Ubuntu and macOS.
+- **Tests:** `tests/run.sh` (142, bash 5 and 3.2, always with a space in `$HOME`), skills lint, a real `skills` CLI install, and a real Claude Code agent test. CI runs the first three on Ubuntu and macOS.
 - **Tested with real Claude Code before the review** (journeys: first use, hand edit, new skill, team `git pull`, regression and rollback, deleted skill; real upstream update and self-update). Rerun the agent test after skill-text changes.
 
 ## Decided

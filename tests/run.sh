@@ -337,6 +337,23 @@ has "parallel feedback gets distinct ids" "$(find "$HOME/.meta-skill-loop/skills
 lacks "parallel calls don't see phantom edits" "$(cat "$HOME/.meta-skill-loop/skills/tooling/feedback"/*.md)" "+edits"
 has "and the skill is still clean" "$(state_of tooling)" "clean"
 
+# `npx skills update` has no --copy: it reinstalls with a symlink from the Claude
+# Code folder to ~/.agents/skills. Syncing copies must never wipe a folder onto itself.
+skill "$HOME/.agents/skills/relinked" relinked "Base."
+skill "$HOME/.claude/skills/relinked" relinked "Base."
+lock relinked 111111111111
+msl add relinked >/dev/null
+echo "Mine." >> "$HOME/.claude/skills/relinked/SKILL.md"
+msl keep relinked -m mine >/dev/null
+rm -rf "$HOME/.agents/skills/relinked" "$HOME/.claude/skills/relinked"
+skill "$HOME/.agents/skills/relinked" relinked "Base, updated upstream."
+ln -s "$HOME/.agents/skills/relinked" "$HOME/.claude/skills/relinked"
+lock relinked 222222222222
+has "an update that turned a copy into a link is detected" "$(state_of relinked)" "upstream-update"
+msl update relinked --no-fetch >/dev/null
+check "recording it leaves the skill in place, not empty" test -f "$HOME/.agents/skills/relinked/SKILL.md"
+has "and your version stays live" "$(cat "$HOME/.claude/skills/relinked/SKILL.md")" "Mine."
+
 echo "remove"
 skill "$HOME/.agents/skills/tmp-skill" tmp-skill
 orig="$(cat "$HOME/.agents/skills/tmp-skill/SKILL.md")"
