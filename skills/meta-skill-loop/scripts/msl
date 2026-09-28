@@ -18,7 +18,7 @@
 set -euo pipefail
 unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_COMMON_DIR 2>/dev/null || true
 
-MSL_VERSION="0.2.0"
+MSL_VERSION="0.3.0"
 MSL_FORMAT=1
 MSL_HOME="${MSL_HOME:-$HOME/.meta-skill-loop}"
 TAB="$(printf '\t')"
@@ -541,7 +541,7 @@ for d in "$1" "\$HOME/.agents/skills/meta-skill-loop" "\$HOME/.cursor/skills/met
          "\$HOME/.claude/skills/meta-skill-loop" "\$HOME/.codex/skills/meta-skill-loop"; do
   if [ -f "\$d/scripts/msl" ]; then exec "\${MSL_BASH:-bash}" "\$d/scripts/msl" "\$@"; fi
 done
-echo "msl: the meta-skill-loop skill is not installed. Install it: npx skills@latest add SoulEvill/meta-skill-loop --skill '*' -g" >&2
+echo "msl: the meta-skill-loop skill is not installed. Install it: npx skills@latest add SoulEvill/meta-skill-loop --skill meta-skill-loop -g" >&2
 exit 1
 EOF
 }
@@ -564,7 +564,6 @@ cmd_init() {
   mkdir -p "$MSL_HOME/skills" "$MSL_HOME/sessions" "$MSL_HOME/bin"
   if [ ! -f "$MSL_HOME/workspace.yaml" ]; then
     printf 'format: %s\nid: %s\ncreated: %s\n' "$MSL_FORMAT" "$(new_ws_id)" "$(today)" > "$MSL_HOME/workspace.yaml"
-    : > "$MSL_HOME/setup-pending"
   fi
   if [ ! -f "$MSL_HOME/README.md" ]; then
     cat > "$MSL_HOME/README.md" <<'EOF'
@@ -583,23 +582,6 @@ EOF
   fi
   ensure_launcher
   printf 'workspace: %s (id %s)\n' "$(tilde "$MSL_HOME")" "$(ws_id)"
-}
-
-# The one-time setup the agent offers the user. Until it has been shown, every command
-# reminds the agent (on stderr), so the offer doesn't depend on the agent remembering.
-cmd_setup() {
-  cat <<EOF
-One-time setup, optional. Offer it for the tool you're running in; make each change only with the user's OK.
-1. So the agent offers to log feedback when the user corrects a skill, add this line to its rules:
-     When the user corrects how a skill behaved or gives feedback on a skill, offer to log it with the meta-skill-feedback skill.
-   Claude Code: ~/.claude/CLAUDE.md. Codex: ~/.codex/AGENTS.md.
-   Cursor: Settings > Rules > User Rules (the user pastes it there).
-2. So the tool stops asking before every msl command:
-   Claude Code: allow "Bash($(tilde "$MSL_HOME")/bin/msl:*)" in ~/.claude/settings.json.
-   Codex: in ~/.codex/config.toml, under [sandbox_workspace_write], set writable_roots = ["$MSL_HOME"].
-   Cursor: allow it when Cursor first asks.
-EOF
-  rm -f "$MSL_HOME/setup-pending"
 }
 
 list_installed() {
@@ -814,6 +796,7 @@ cmd_status() {
   [ -z "$notes" ] || printf '\n%s\n' "$notes"
   if [ $# -eq 0 ]; then
     while IFS="$TAB" read -r name _; do
+      # meta-skill-loop itself, and the two skills that versions before 0.3 shipped alongside it
       case "$name" in ''|meta-skill-loop|meta-skill-feedback|meta-skill-refine) continue ;; esac
       is_managed "$name" || unmanaged=$((unmanaged + 1))
     done <<EOF
@@ -1317,7 +1300,6 @@ msl $MSL_VERSION: meta-skill-loop bookkeeping (data in $(tilde "$MSL_HOME"))
   msl rollback <name> <vN> [--yes]   go back to a version
   msl update <name> [--check] [--no-fetch] | --apply [-m s] [--fixes ids] | --abort | --take-upstream
 
-  msl setup                          the one-time setup to offer the user
   msl path <name> | msl git <name> <git args…> | msl init | msl version
 EOF
 }
@@ -1326,7 +1308,7 @@ main() {
   local cmd="${1:-help}"
   [ $# -eq 0 ] || shift
   case "$cmd" in
-    init|setup|add|link|remove|status|path|feedback|diff|keep|discard|restore|history|revert|rollback|update|git) ;;
+    init|add|link|remove|status|path|feedback|diff|keep|discard|restore|history|revert|rollback|update|git) ;;
     version|--version|help|-h|--help) ;;
     *) usage >&2; exit 2 ;;
   esac
@@ -1334,7 +1316,6 @@ main() {
   case "$cmd" in init|version|--version|help|-h|--help) ;; *) ensure_ws; ensure_launcher ;; esac
   case "$cmd" in
     init) cmd_init "$@" ;;
-    setup) cmd_setup ;;
     add) cmd_add "$@" ;;
     link) cmd_link "$@" ;;
     remove) cmd_remove "$@" ;;
@@ -1352,10 +1333,6 @@ main() {
     git) cmd_git "$@" ;;
     version|--version) echo "$MSL_VERSION" ;;
     help|-h|--help) usage ;;
-  esac
-  case "$cmd" in setup|path|version|--version|help|-h|--help) ;; *)
-    [ ! -f "$MSL_HOME/setup-pending" ] ||
-      echo "msl: first use. Before you reply, run \`msl setup\` yourself and offer the user the one-time setup it prints." >&2 ;;
   esac
 }
 

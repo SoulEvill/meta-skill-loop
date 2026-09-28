@@ -2,31 +2,32 @@
 
 Your agent skills get better as you use them.
 
-When a skill gets something wrong, tell your agent, and meta-skill-loop saves it as
-feedback. When you're ready, ask it to refine the skill: it proposes a small edit based
-on that feedback and applies it only if you approve. Every version is kept, so you can
-always go back.
+When a skill gets something wrong, ask your agent to log it, and meta-skill-loop saves
+it as feedback. When you're ready, ask it to refine the skill: it proposes a small edit
+based on that feedback and applies it only if you approve. Every version is kept, so you
+can always go back.
 
 Works in Cursor, Claude Code, and Codex.
 
 ## Install
 
 ```sh
-npx skills@latest add SoulEvill/meta-skill-loop --skill '*' \
+npx skills@latest add SoulEvill/meta-skill-loop --skill meta-skill-loop \
   --agent cursor claude-code codex -g
 ```
 
 This installs it for all three tools, in every project. For Cursor only, use
 `--agent cursor`. It needs Node.js, Git, and bash (macOS, Linux, or WSL on Windows).
 
-The first time you use it, your agent sets it up and offers two optional settings:
-offering to log feedback whenever you correct a skill, and not asking permission every
-time it runs.
+There is nothing else to set up: the first time you use it, your agent creates
+`~/.meta-skill-loop`. The first few times, your tool may ask before running `msl`, the
+script it uses; allow it.
 
 ## Use
 
-1. **Use your skills as usual.** When one gets something wrong, say so:
-   "feedback on pr-review: it buried the real bug under style nits."
+1. **Use your skills as usual.** When one gets something wrong, ask to log it:
+   "log feedback on pr-review: it buried the real bug under style nits."
+   It's logged only when you ask.
 2. **Refine when you're ready:** "refine pr-review". Your agent shows the edit it would
    make. Approve it, and it becomes the skill's next version.
 3. **Go back if it got worse:** "undo that change to pr-review", or "go back to v2".
@@ -45,7 +46,7 @@ You can also ask:
 - **Everything stays on your machine**, in `~/.meta-skill-loop`. Feedback can include
   work details, so keep that folder private.
 - **Update:** `npx skills@latest update -g`.
-- **Uninstall:** `npx skills@latest remove meta-skill-loop meta-skill-feedback meta-skill-refine -g`.
+- **Uninstall:** `npx skills@latest remove meta-skill-loop -g`.
   Your feedback and versions stay in `~/.meta-skill-loop` until you delete it.
 
 How it works: [docs/design.md](docs/design.md). Contributing: [AGENTS.md](AGENTS.md).

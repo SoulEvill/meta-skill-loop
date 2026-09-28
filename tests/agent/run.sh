@@ -19,7 +19,6 @@ PROJECT="$HOME/project"
 mkdir -p "$PROJECT" "$HOME/transcripts"
 (cd "$PROJECT" && git init -q)
 fail=0
-n=0
 ok() { printf '  ok   %s\n' "$1"; }
 bad() { printf '  FAIL %s (transcript: %s)\n' "$1" "${2:-}"; fail=1; }
 
@@ -32,11 +31,12 @@ esac
 
 # Ask the agent one thing; print its answer; keep the transcript (Claude Code: also every tool call, in N.txt.jsonl).
 ask() {
-  n=$((n + 1))
-  local t="$HOME/transcripts/$n.txt"
+  # Numbered from the files, not a counter: ask often runs in a $(…) subshell.
+  local t="$HOME/transcripts/$(($(count) + 1)).txt"
   case "$AGENT" in
     claude-code)
-      (cd "$PROJECT" && claude -p "$1" --allowedTools "Skill" "Read" "Bash(ls:*)" "Bash(test:*)" \
+      # shellcheck disable=SC2086
+      (cd "$PROJECT" && claude -p ${CONTINUE:+--continue} "$1" --allowedTools "Skill" "Read" "Bash(ls:*)" "Bash(test:*)" \
         "Bash(bash ~/.claude/skills/meta-skill-loop/scripts/msl:*)" "Bash(bash ~/.agents/skills/meta-skill-loop/scripts/msl:*)" \
         "Bash($skills_dir/meta-skill-loop/scripts/msl:*)" "Bash(bash $skills_dir/meta-skill-loop/scripts/msl:*)" \
         "Bash(../meta-skill-loop/scripts/msl:*)" "Bash(~/.meta-skill-loop/bin/msl:*)" "Bash($HOME/.meta-skill-loop/bin/msl:*)" \
@@ -50,7 +50,8 @@ ask() {
   esac > "$t" 2>&1 || true
   cat "$t"
 }
-last() { printf '%s' "$HOME/transcripts/$n.txt"; }
+count() { find "$HOME/transcripts" -name '*.txt' | wc -l | tr -d ' '; }
+last() { printf '%s' "$HOME/transcripts/$(count).txt"; }
 
 if [ "$AGENT" = codex ] && [ -n "${OPENAI_API_KEY:-}" ]; then
   printenv OPENAI_API_KEY | codex login --with-api-key >/dev/null  # stored in this throwaway HOME only
@@ -58,7 +59,7 @@ fi
 
 echo "install ($AGENT)"
 # shellcheck disable=SC2086
-npx -y skills@latest add "$REPO" --skill '*' $agents -g -y >/dev/null 2>&1
+npx -y skills@latest add "$REPO" --skill meta-skill-loop $agents -g -y >/dev/null 2>&1
 mkdir -p "$skills_dir/greeting" && cp "$REPO/tests/fixtures/greeting/SKILL.md" "$skills_dir/greeting/"
 if [ -f "$skills_dir/meta-skill-loop/SKILL.md" ]; then ok "skills installed in $skills_dir"; else bad "skills installed"; fi
 
@@ -68,8 +69,6 @@ fb="$(find "$HOME/.meta-skill-loop/skills/greeting/feedback" -name 'fb-*.md' 2>/
 if [ -n "$fb" ] && grep -qi 'exclamation' "$fb"; then ok "feedback entry written for greeting"; else bad "feedback entry written for greeting" "$(last)"; fi
 if [ -x "$HOME/.meta-skill-loop/bin/msl" ]; then ok "workspace and launcher set up on first use"; else bad "workspace set up on first use" "$(last)"; fi
 if grep -q '!!!' "$skills_dir/greeting/SKILL.md"; then ok "logging feedback did not edit the skill"; else bad "logging feedback did not edit the skill" "$(last)"; fi
-if grep -Eqi 'CLAUDE\.md|settings\.json|rule|allow' "$(last)"; then ok "first use offers the one-time setup"; else bad "first use offers the one-time setup" "$(last)"; fi
-if ! grep -qs 'meta-skill-feedback' "$HOME/.claude/CLAUDE.md" "$HOME/.codex/AGENTS.md"; then ok "setup is offered, not done without asking"; else bad "setup is offered, not done without asking"; fi
 
 echo "status and versions"
 out="$(ask "meta-skill-loop status")"
@@ -82,6 +81,17 @@ before="$(find "$HOME/.meta-skill-loop/skills" -name 'fb-*.md' | wc -l | tr -d '
 out="$(ask "write a python function that reverses a string; just show the code")"
 after="$(find "$HOME/.meta-skill-loop/skills" -name 'fb-*.md' | wc -l | tr -d ' ')"
 if grep -q 'def ' <<<"$out" && [ "$before" = "$after" ]; then ok "no feedback logged for an unrelated task"; else bad "no feedback logged for an unrelated task" "$(last)"; fi
+
+if [ "$AGENT" = claude-code ]; then
+  echo "a plain correction, without asking to log it, leaves meta-skill-loop alone"
+  before="$(find "$HOME/.meta-skill-loop/skills" -name 'fb-*.md' | wc -l | tr -d ' ')"
+  ask "hello!" >/dev/null
+  out="$(CONTINUE=1 ask "hmm, three exclamation marks is way too much. one is enough")"
+  after="$(find "$HOME/.meta-skill-loop/skills" -name 'fb-*.md' | wc -l | tr -d ' ')"
+  if [ "$before" = "$after" ]; then ok "nothing logged"; else bad "nothing logged" "$(last)"; fi
+  if ! grep -Eqi 'log (it|that|this)?.*feedback|feedback.*meta-skill' <<<"$out"; then ok "not even offered"; else bad "not even offered" "$(last)"; fi
+  if ! grep -q '"skill":"meta-skill-loop"' "$(last).jsonl"; then ok "the skill was not invoked"; else bad "the skill was not invoked" "$(last)"; fi
+fi
 
 [ "$fail" = 0 ] && echo "agent tests ($AGENT): ok"
 exit "$fail"

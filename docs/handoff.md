@@ -2,13 +2,15 @@
 
 Rewritten at the end of every working session, so the next session (human or agent, local or cloud) can pick up. It's a snapshot, not a history: git log has the history. For the design, see [design.md](design.md). The code is the source of truth.
 
-_Last updated: 2026-09-28, after PR #3 (install like the other Wendao skills); then the one-time setup moved from the README into first use._
+_Last updated: 2026-09-28, during PR #4: one skill, explicit capture only, version 0.3.0._
 
 ## Where things stand
 
-- **v0.2.0 is merged to `main`** (PR #1, after three independent review rounds). Not tagged yet.
-- **Install** follows the other Wendao skills (`SoulEvill/wendao-skills`): `npx skills@latest add SoulEvill/meta-skill-loop --skill '*' --agent cursor claude-code codex -g`. The skills CLI's default mode keeps one real folder in `~/.agents/skills` and links Claude Code's, which is meta-skill-loop's one-folder model; `--copy` is no longer recommended.
-- **README** is short: install, the loop (feedback, refine, go back), a few facts. The one-time setup (the rules line, allowing `msl`) moved out of it into `msl setup`. Until that has been shown, every msl command reminds the agent on stderr to offer it (an instruction in the skill alone was forgotten in 1 of 2 real runs; with the reminder, offered in 4 of 4). "set up meta-skill-loop" offers it again.
+- **v0.2.0 is on `main`** (PR #1, three independent review rounds; PR #3 simplified the install). Never tagged. **PR #4** makes it **0.3.0**: one skill, explicit capture, a shorter README.
+- **Install** follows the other Wendao skills (`SoulEvill/wendao-skills`): `npx skills@latest add SoulEvill/meta-skill-loop --skill meta-skill-loop --agent cursor claude-code codex -g`. The skills CLI's default mode keeps one real folder in `~/.agents/skills` and links Claude Code's, which is meta-skill-loop's one-folder model; `--copy` is no longer recommended.
+- **One skill** (decided with the user): `SKILL.md` routes to `references/feedback.md` and `references/refine.md`, like Anthropic's skill-creator. It was three skills; anyone with the old install removes `meta-skill-feedback` and `meta-skill-refine` (`npx skills@latest remove meta-skill-feedback meta-skill-refine -g`), or their old descriptions keep offering to log feedback.
+- **Capture is explicit** (decided with the user): feedback is logged only when the user asks. The agent doesn't log or suggest it on its own. Real Claude Code runs: with the old wording, a plain correction got an offer to log in 3 of 3; with the new, no skill call and no offer in 3 of 3. Automatic capture is a later opt-in setting (design.md §8, v3). No setup, rules lines, or hooks.
+- **README** is short: install, the loop (log feedback, refine, go back), a few facts.
 - **Stays its own repo**, separate from wendao-skills: it's a tool with its own code, tests, and releases, while wendao-skills holds prose skills. Decided with the user.
 - **The core model** (design.md §5):
   - one real folder per skill; other tool folders link to it (`msl link`, with approval; copies are set aside, never deleted);
@@ -16,7 +18,7 @@ _Last updated: 2026-09-28, after PR #3 (install like the other Wendao skills); t
   - four states: `clean`, `changed`, `upstream`, `missing`;
   - one workspace lock: one msl command at a time.
 - **Formats** (settled before release): feedback entries (title, version, tool, conversation copy, severity `P0`–`P3`/`nit`, status `open`/`applied`/`declined`, `fixed_in`; free-form body), `workspace.yaml` with `format: 1` and a 6-character id, `skill.yaml` with `path` and `links`.
-- **Tests:** `tests/run.sh` (177, bash 5 and 3.2, always with a space in `$HOME`, `TZ=UTC`), skills lint, a real `skills` CLI install (checks the default layout: real folder plus Claude Code link), and a real Claude Code agent test. CI runs the first three on Ubuntu and macOS.
+- **Tests:** `tests/run.sh` (177, bash 5 and 3.2, always with a space in `$HOME`, `TZ=UTC`), skills lint (including that the frontmatter parses as YAML: the skills CLI silently skips a skill whose description contains `: `), a real `skills` CLI install (one skill, with its references; the default layout), and a real Claude Code agent test (explicit feedback logs; a plain correction doesn't even suggest it; each run keeps every tool call in `transcripts/N.txt.jsonl`). CI runs the first three on Ubuntu and macOS.
 
 ## Why the core changed (after review round 1)
 
@@ -37,13 +39,13 @@ The per-skill locks and workspace-wide id reservation added during the review we
 
 ## Not verified yet
 
-- Real Cursor and Codex runs (no keys here): triggering from descriptions, Cursor's approval prompts, Codex's `writable_roots`, and how Codex identifies the current conversation.
+- Real Cursor and Codex runs (no keys here): triggering from descriptions, following `references/feedback.md` from the skill's folder, not suggesting feedback unasked, Cursor's approval prompts, Codex's `writable_roots`, and how Codex identifies the current conversation.
 - That Cursor loads a skill through a link in `~/.claude/skills` or `~/.cursor/skills` isn't needed: the real folder is in `~/.agents/skills`, which Cursor reads directly.
 - Windows: WSL or Git Bash only.
 
 ## Next steps
 
-1. Tag `v0.2.0` on `main` (the release workflow checks it matches `MSL_VERSION`).
+1. After PR #4 merges, tag `v0.3.0` on `main` (the release workflow checks it matches `MSL_VERSION`).
 2. The user configures repo protection from `docs/maintaining.md`.
 3. The user tries it in Cursor with the README's install command: add, feedback, refine, keep, update.
 4. Link meta-skill-loop from the wendao-skills README once that repo is public.

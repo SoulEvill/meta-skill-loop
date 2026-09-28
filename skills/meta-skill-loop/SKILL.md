@@ -1,6 +1,6 @@
 ---
 name: meta-skill-loop
-description: Manage agent skills, their versions, and their feedback. Use when the user says "meta-skill-loop" or "msl", asks which skills they have or which have open feedback, wants to add (manage) existing skills, see a skill's versions or history, compare versions, undo a change or go back to an earlier version, keep or discard edits to a skill, update a skill from its upstream source, or stop managing a skill. For logging feedback use meta-skill-feedback; for improving a skill from feedback use meta-skill-refine.
+description: Feedback and version history for agent skills. Use when the user asks to log or record feedback on a skill ("log feedback on pr-review", "feedback on grill-me", "record this for the skill"), to refine or improve a skill from its feedback, to see a skill's versions or what changed, to undo a change or go back to a version, to keep or discard edits to a skill, to update a skill from upstream, to add or stop managing skills, or says "meta-skill-loop" or "msl". Log feedback only when the user explicitly asks to; don't suggest logging feedback otherwise.
 ---
 
 # meta-skill-loop
@@ -19,9 +19,15 @@ bash ~/.cursor/skills/meta-skill-loop/scripts/msl init
 
 If none works, use the folder your tool loaded this skill from: `bash <that folder>/scripts/msl init`.
 
-If msl says to offer the one-time setup, run `msl setup` yourself and, when you report back, briefly offer what it prints for the tool you're running in; make each change only if the user agrees.
-
 **Versions work like git.** Changes in a skill folder are *live edits* until `msl keep` makes them the next version (v2, v3, …). `msl discard` throws them away; they're saved, and `msl restore` brings them back. A skill installed with the `skills` CLI also tracks the published *upstream* versions, and updates are merged into the user's version instead of overwriting it. Each skill has one real folder; other tool folders link to it, so an edit reaches every tool.
+
+## Log feedback: "log feedback on pr-review: …", "feedback on grill-me: …", "record this for the skill"
+
+Read `references/feedback.md` in this skill's folder and follow it. Only when the user asks: don't log feedback, or suggest it, just because the user corrected a skill.
+
+## Refine: "refine pr-review", "improve grill-me from its feedback"
+
+Read `references/refine.md` in this skill's folder and follow it.
 
 ## Status: "meta-skill-loop", "status", "which skills have feedback?"
 
@@ -38,10 +44,6 @@ Run `msl status` and summarize it in a few lines: each skill's version (`v3*` me
 3. Run `msl add <name>` for each (or `msl add <path>` for a specific folder). The skill is not modified. msl reports the kind: `skills-cli` (installed by the `skills` CLI, so it has upstream updates) or `local` (everything else, including skills inside a git repo, whose pulls simply show up as changes to keep).
 4. If msl says the skill is also a separate copy in another tool's folder, ask whether to link it so one edit reaches every tool: `msl link <name>`. The copy is set aside in `~/.meta-skill-loop/archive/`, not deleted.
 
-## Set up: "set up meta-skill-loop"
-
-Run `msl setup` and offer what it prints, only for the tool you're running in. Make each change only if the user agrees; for Cursor, tell them where to paste the line.
-
 ## Versions: "show versions of pr-review", "what changed?", "compare v2 and v4"
 
 - `msl history <name>` lists versions with their date, what changed, the feedback each one fixed, and how much feedback was logged against each. A version that attracts new complaints is a likely regression.
@@ -57,7 +59,7 @@ Run `msl history <name>` and confirm with the user which version. Then:
 - **Undo one change:** `msl revert <name> v4`. Everything else stays, including later upstream updates. Prefer this when the user blames one change.
 - **Go back to a version:** `msl rollback <name> v2`. If it says this also brings back older upstream text, tell the user, and only rerun with `--yes` if they agree.
 
-Either way the result is a new version, and the feedback the undone versions fixed is reopened. Then offer to log why the change was worse, as feedback on that version (meta-skill-feedback with `--version v4`), so the next refine knows what to avoid.
+Either way the result is a new version, and the feedback the undone versions fixed is reopened. If the user asks to record why the change was worse, log it as feedback on that version (Log feedback, with `--version v4`), so the next refine knows what to avoid.
 
 ## Updates: "is there an update for grilling?", "update grilling", or an upstream note in status
 
@@ -83,4 +85,4 @@ Then wait for the user's decision:
 - Don't search the disk for skills: `msl add` lists them, and `msl path <name>` gives a managed skill's folder.
 - Never edit files in `~/.meta-skill-loop/` by hand. Use `msl`. The one exception is resolving a pending merge in `…/merge/`.
 - `~/.meta-skill-loop` holds private work: feedback and copies of conversations. Never copy it anywhere public.
-- If `msl` can't write (for example, a sandbox blocks writes outside the project), show the command you would have run and ask the user to allow it or run it themselves.
+- If `msl` can't write (for example, a sandbox blocks writes outside the project), show the command you would have run and ask the user to allow it or run it themselves. In Codex, the user can allow it once in `~/.codex/config.toml`: `writable_roots = ["<their home>/.meta-skill-loop"]` under `[sandbox_workspace_write]`.

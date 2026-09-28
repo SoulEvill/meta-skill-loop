@@ -1,31 +1,10 @@
----
-name: meta-skill-feedback
-description: Log feedback about how a skill behaved, with evidence, so it can be improved later. Use when the user says "feedback on <skill>", "log feedback", "record this", "that skill should…", "next time don't…", "remember this for the skill", or corrects how a skill just behaved and agrees to log it. Works for any skill, managed or not.
----
+# Log feedback
 
-# meta-skill-feedback
-
-Capture one piece of feedback about a skill as an entry, then get back to what the user was doing. Capturing never changes the skill. Improving it is a separate, deliberate step (meta-skill-refine).
-
-Run `msl` as `~/.meta-skill-loop/bin/msl <command>`, exactly like that (not through `bash`), so one approval in the tool covers every call. Just run it: don't check for files first.
-
-Only if it fails because that file doesn't exist (the very first use), set it up once by trying these in order until one works, then run your command again:
-
-```sh
-bash ~/.agents/skills/meta-skill-loop/scripts/msl init
-bash ~/.claude/skills/meta-skill-loop/scripts/msl init
-bash ~/.cursor/skills/meta-skill-loop/scripts/msl init
-```
-
-If none works, use the folder your tool loaded this skill from: `bash <that folder>/../meta-skill-loop/scripts/msl init`.
-
-If msl says to offer the one-time setup, run `msl setup` yourself and, when you report back, briefly offer what it prints for the tool you're running in; make each change only if the user agrees.
-
-If the `meta-skill-loop` skill isn't installed at all: tell the user (`npx skills@latest add SoulEvill/meta-skill-loop --skill '*' -g`) and show them the feedback entry you would have logged, so nothing is lost.
+Capture one piece of feedback about a skill as an entry, then get back to what the user was doing. Do this only because the user asked. Capturing never changes the skill: improving it is a separate step (`refine.md`). Run `msl` as SKILL.md says.
 
 ## Steps
 
-1. **Identify the skill.** Usually it's the skill you used earlier in this conversation.
+1. **Identify the skill.** Usually the user names it. If not, it's the skill you used earlier in this conversation.
    - If more than one skill was involved, or none obviously was, ask which one. Use the skill's `name` from its frontmatter.
    - If that skill only hands off to another skill (for example, "use the grilling skill"), log the feedback on the skill whose instructions actually produced the behavior.
 
@@ -85,3 +64,4 @@ If the `meta-skill-loop` skill isn't installed at all: tell the user (`npx skill
 - If the same problem was already logged (`msl feedback list <name>`), say so. Only log it again if there's new evidence; repeated entries show a pattern.
 - If writing is blocked (a sandbox, or a permission prompt the user declines), show the full `msl feedback add …` command so the user can run it.
 - Don't fix the skill here, even if the fix looks obvious. Suggest "refine <skill>" instead.
+- Log only what the user asked you to log. Don't add entries of your own for other problems you noticed; mention them, and let the user decide.

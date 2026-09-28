@@ -57,13 +57,6 @@ skill "$HOME/.cursor/skills/grill-me" grill-me "Ask hard questions."
 # Two separate copies (a --copy install, or by hand); the launcher tests below rely on it.
 for t in "$HOME/.agents/skills" "$HOME/.claude/skills"; do mkdir -p "$t" && cp -R "$REPO"/skills/* "$t/"; done
 "$SH" "$HOME/.agents/skills/meta-skill-loop/scripts/msl" init >/dev/null
-has "until it's shown, every command reminds the agent to offer the setup" "$(msl status 2>&1 >/dev/null)" "offer the user the one-time setup"
-lacks "the reminder never pollutes stdout" "$(msl status 2>/dev/null)" "one-time setup"
-out="$(msl setup)"
-has "setup has the rules line" "$out" "offer to log it with the meta-skill-feedback skill."
-has "setup gives Codex the real workspace path" "$out" "writable_roots = [\"$HOME/.meta-skill-loop\"]"
-has "setup gives Claude Code the launcher to allow" "$out" 'Bash(~/.meta-skill-loop/bin/msl:*)'
-check "once shown, no more reminders" test -z "$(msl status 2>&1 >/dev/null)"
 check "first use installs the msl launcher" test -x "$HOME/.meta-skill-loop/bin/msl"
 check "launcher runs the installed skill, not the clone" fails grep -qF "$REPO" "$HOME/.meta-skill-loop/bin/msl"
 check "workspace has a format version" grep -q '^format: 1$' "$HOME/.meta-skill-loop/workspace.yaml"

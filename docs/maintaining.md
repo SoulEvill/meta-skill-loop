@@ -11,11 +11,11 @@ How releases, CI, and repository protection work. Reference material: if it disa
 2. **Merge to `main`** once CI is green and you've reviewed it.
 3. **Release:** bump `MSL_VERSION` in `skills/meta-skill-loop/scripts/msl` (semver), merge that, then tag the merge commit and push the tag:
    ```sh
-   git tag v0.2.0 && git push origin v0.2.0
+   git tag v0.3.0 && git push origin v0.3.0
    ```
    The `release` workflow refuses a tag that isn't on `main` or doesn't match `MSL_VERSION`. It reruns all tests and publishes a GitHub Release with generated notes.
 
-Users install from `main` with the README's command (`npx skills@latest add SoulEvill/meta-skill-loop --skill '*' --agent cursor claude-code codex -g`) or pin a tag (`SoulEvill/meta-skill-loop#v0.2.0`), and update with `npx skills@latest update -g`.
+Users install from `main` with the README's command (`npx skills@latest add SoulEvill/meta-skill-loop --skill meta-skill-loop --agent cursor claude-code codex -g`) or pin a tag (`SoulEvill/meta-skill-loop#v0.3.0`), and update with `npx skills@latest update -g`.
 
 ## Real-agent tests (manual)
 

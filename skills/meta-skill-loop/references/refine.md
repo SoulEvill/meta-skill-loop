@@ -1,31 +1,12 @@
----
-name: meta-skill-refine
-description: Improve a skill from its logged feedback. Use when the user says "refine <skill>", "improve <skill> from feedback", "apply the feedback to <skill>", "tune <skill>", or asks to work through open feedback. Turns the feedback into a brief, makes the smallest edit the user approves, and records it as a new version.
----
+# Refine a skill
 
-# meta-skill-refine
-
-Turn a skill's accumulated feedback into a small, approved change, and record it as a new version tied to the feedback it fixes.
-
-Run `msl` as `~/.meta-skill-loop/bin/msl <command>`, exactly like that (not through `bash`), so one approval in the tool covers every call. Just run it: don't check for files first.
-
-Only if it fails because that file doesn't exist (the very first use), set it up once by trying these in order until one works, then run your command again:
-
-```sh
-bash ~/.agents/skills/meta-skill-loop/scripts/msl init
-bash ~/.claude/skills/meta-skill-loop/scripts/msl init
-bash ~/.cursor/skills/meta-skill-loop/scripts/msl init
-```
-
-If none works, use the folder your tool loaded this skill from: `bash <that folder>/../meta-skill-loop/scripts/msl init`.
-
-If msl says to offer the one-time setup, run `msl setup` yourself and, when you report back, briefly offer what it prints for the tool you're running in; make each change only if the user agrees.
+Turn a skill's accumulated feedback into a small, approved change, and record it as a new version tied to the feedback it fixes. Run `msl` as SKILL.md says.
 
 ## Steps
 
 1. **Check the skill.** Run `msl status <name>`. It should be `clean`.
    - If it has live edits (`changed`), ask whether to keep or discard them first.
-   - If a note mentions upstream, handle the update first (see the meta-skill-loop skill).
+   - If a note mentions upstream, handle the update first (Updates, in SKILL.md).
 
 2. **Read the feedback.** Run `msl feedback list <name>` for the open entries.
    - Compare each entry's `version` with the current version in `msl status`. Entries logged against an older version may already be fixed.
