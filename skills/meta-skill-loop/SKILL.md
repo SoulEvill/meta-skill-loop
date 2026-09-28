@@ -36,7 +36,7 @@ Run `~/.meta-skill-loop/bin/msl status` and summarize it in a few lines. It show
 - **"upstream … is recorded but not merged":** a newer upstream version is known but isn't in the user's version yet (they chose "not now" earlier, or it arrived with a reinstall). Offer to review it (see Updates).
 - **`copies-differ`:** the skill is installed in several tool folders and they no longer match. `msl keep <name> -m "sync copies"` copies the primary one over the others.
 - **`missing`:** the folder is gone. Offer `msl remove <name>`.
-- **Unmanaged skills:** if any exist, mention how many and offer to add them.
+- **Unmanaged skills:** if any exist, mention how many and offer to add them, once per conversation.
 
 ### Add: "add my skills", "manage grill-me"
 
@@ -107,6 +107,7 @@ Entries with `origin: observed` start as `candidate`. For each one (`msl feedbac
 ## Rules
 
 - Never edit a skill without the user's approval. Never move, delete, or rename a skill folder.
+- Don't search the disk for skills: `msl status`, `msl path <name>`, and `msl scan` know where every skill is.
 - Never edit files in `~/.meta-skill-loop/` by hand. Use `msl`. The one exception is resolving a pending merge in `…/merge/`.
 - `~/.meta-skill-loop` may contain private work evidence. Never copy it anywhere public.
 - If `msl` can't write (for example, a sandbox blocks writes outside the project), show the command you would have run and ask the user to allow it or run it themselves.

@@ -2,11 +2,11 @@
 
 Rewritten at the end of every working session, so the next session (human or agent, local or cloud) can pick up. It's a snapshot, not a history. For the design, see [design.md](design.md). The code is the source of truth.
 
-_Last updated: 2026-09-28, after packaging and CI._
+_Last updated: 2026-09-28, after user-journey testing._
 
 ## Where things stand
 
-- **v1.1 is built** on branch `claude/inspiring-ritchie-n204ga`, not merged to `main` yet. 97 end-to-end tests plus the skills lint and a real `skills` CLI install, all in CI on Ubuntu and macOS (bash 3.2).
+- **v1.1 is built** on branch `claude/inspiring-ritchie-n204ga`, not merged to `main` yet. 103 end-to-end tests plus the skills lint and a real `skills` CLI install, all in CI on Ubuntu and macOS (bash 3.2).
   - Each managed skill has its own git repo in the workspace, whose working tree is the live skill folder. It has two branches: `upstream` (as published) and `mine` (what runs).
   - Commands: `keep`, `undo`/`redo`, `history`, `rollback` (to a version, or `--only` one), and review-gated `update` (`--check`, `--apply`, `--abort`, `--take-upstream`).
   - `diff` variants: between versions, `--upstream`, `--incoming`, `--merge`, `--saved`.
@@ -68,6 +68,35 @@ _Last updated: 2026-09-28, after packaging and CI._
 - **Repository protection is clicked in GitHub settings** (checklist in `docs/maintaining.md`). It can't be set from a session.
 - **`npx skills add SoulEvill/meta-skill-loop` only works once this branch is merged to `main`**, because main has only the README and license today.
 
+## User-journey testing (2026-09-28, real Claude Code + real skills CLI)
+
+**Set up like a real user.** meta-skill-loop was installed from GitHub (`SoulEvill/meta-skill-loop#<branch>`), alongside a plain local skill and a team repo with a skill in it. Real Claude Code played the agent.
+
+**Journeys that passed:**
+1. First use: add my skills.
+2. A hand edit is detected, then kept as v2.
+3. A newly created skill is added.
+4. A teammate's change arrives by `git pull`: detected, reviewed, taken as v2, and the repo is left clean.
+5. A regression is rolled back, and the regression is logged as feedback.
+6. A deleted skill shows as missing and is removed.
+
+**Real update flows that passed:**
+- **Our own skill:** refined locally, then an upstream change was pushed to GitHub. `update --check`, `diff --incoming`, `update`, and `--apply` produced v3 with both changes.
+- **Self-update:** `npx skills update` updated `msl` through the launcher.
+
+**Bugs found and fixed:**
+- Same-named different skills were grouped as copies, so `keep` overwrote a project's own skill.
+- `update --check` on a git-repo skill reverted the pulled change in the working tree.
+- The first-use setup instruction was unusable by the agent: it couldn't find the folder, and a shell loop can't be allow-listed. It's now plain per-location commands.
+- Status nagged about meta-skill-loop's own skills.
+- Feedback about a rolled-back version was recorded against the wrong version (`feedback add --version`).
+- Agents searched the disk instead of asking `msl`.
+
+**Documented limits:**
+- Refinements to a skill in a team repo are uncommitted changes there, so `git pull` may ask you to commit or stash first.
+- Only one of two same-named skills can be managed.
+- Windows needs WSL or Git Bash.
+
 ## Decided (details in design.md §5–7)
 
 - Skills stay in place; there's no central store. meta-skill-loop never edits a skill except to apply an approved change.
@@ -84,6 +113,6 @@ _Last updated: 2026-09-28, after packaging and CI._
 ## Next steps
 
 1. The user configures repo protection from `docs/maintaining.md`: the `main` ruleset, the `v*` tag ruleset, Actions settings, and optionally the `agent-tests` environment and keys.
-2. The user tries it in Cursor: install from this branch or a local clone, then add, feedback, refine, keep, update.
+2. The user tries it in Cursor: `npx skills add "SoulEvill/meta-skill-loop#claude/inspiring-ritchie-n204ga" -g --copy`, then add, feedback, refine, keep, update.
 3. Open the PR from this branch to `main`, merge when CI is green, then tag `v0.2.0` so `npx skills add SoulEvill/meta-skill-loop` works for everyone.
 4. Then v2 (`contribute`).

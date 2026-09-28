@@ -655,7 +655,7 @@ cmd_status() {
   [ -z "$notes" ] || printf '\n%s\n' "$notes"
   if [ $# -eq 0 ]; then
     while IFS="$TAB" read -r name _; do
-      [ -n "$name" ] || continue
+      case "$name" in ''|meta-skill-loop|meta-skill-feedback|meta-skill-refine) continue ;; esac
       is_managed "$name" || unmanaged=$((unmanaged + 1))
     done <<EOF
 $(all_skills)
@@ -679,8 +679,8 @@ cmd_feedback() {
 }
 
 feedback_add() {
-  local name="${1:-}" severity="annoying" origin="explicit" confidence="" tool="unknown" project="" status body seq id file ver
-  [ -n "$name" ] || die "usage: msl feedback add <name> [--severity nit|annoying|wrong] [--origin explicit|observed] [--confidence high|medium|low] [--tool T] [--project P] < body"
+  local name="${1:-}" severity="annoying" origin="explicit" confidence="" tool="unknown" project="" status body seq id file ver="" about=""
+  [ -n "$name" ] || die "usage: msl feedback add <name> [--severity nit|annoying|wrong] [--origin explicit|observed] [--confidence high|medium|low] [--tool T] [--project P] [--version vN] < body"
   shift
   while [ $# -gt 0 ]; do
     case "$1" in
@@ -689,6 +689,7 @@ feedback_add() {
       --confidence) confidence="${2:?}"; shift ;;
       --tool) tool="${2:?}"; shift ;;
       --project) project="${2:?}"; shift ;;
+      --version) about="${2:?}"; shift ;;
       *) die "feedback add: unknown option $1" ;;
     esac
     shift
@@ -705,8 +706,13 @@ feedback_add() {
   body="$(cat)"
   [ -n "$(printf '%s' "$body" | tr -d '[:space:]')" ] || die "feedback body is empty (pass it on stdin)"
 
-  ver="$(current_version)"
-  [ ! -d "$PRIMARY" ] || ! is_dirty || { ver="$ver+edits"; save_if_changed "$name"; }
+  if [ -n "$about" ]; then
+    g rev-parse -q --verify "refs/tags/$about" >/dev/null || die "no version $about (msl history $name)"
+    ver="$about"
+  else
+    ver="$(current_version)"
+    [ ! -d "$PRIMARY" ] || ! is_dirty || { ver="$ver+edits"; save_if_changed "$name"; }
+  fi
   mkdir -p "$(skill_dir "$name")/feedback"
   seq="$(next_fb_seq)"
   while :; do
@@ -1116,7 +1122,7 @@ msl $MSL_VERSION: meta-skill-loop bookkeeping (data in $(tilde "$MSL_HOME"))
   msl remove <name>                  stop managing it (data archived; skill untouched)
 
   msl feedback add <name> [--severity nit|annoying|wrong] [--tool T] [--project P]
-                   [--origin explicit|observed] [--confidence C] < body
+                   [--version vN] [--origin explicit|observed] [--confidence C] < body
   msl feedback list <name> [--all]
   msl feedback mark <fb-id> open|declined|applied|resolved-upstream|candidate [-m note]
 

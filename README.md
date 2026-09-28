@@ -98,6 +98,14 @@ msl rollback <name> <vN> [--only]                   msl update <name> [--check |
   - `status`: `candidate`, `open`, `applied`, `declined`, or `resolved-upstream`.
 - **Privacy.** Feedback can contain work details. The workspace is local; never push it anywhere public.
 
+## Good to know
+
+- **Skills that live in a git repo** (a team repo's `.cursor/skills`): pull as usual. meta-skill-loop records what the pull brought and never rewrites the repo's files to do so. Refinements to a team skill are uncommitted changes in that repo, so `git pull` may ask you to commit or stash them first. For a team skill, prefer sending the change to the repo.
+- **Two different skills with the same name** (say, your personal `pr-review` and a project's own): only one can be managed under that name. The other is left untouched, and `add` tells you how to switch.
+- **Your data** is plain folders in `~/.meta-skill-loop` (feedback files and a small git repo per skill). Back it up like any folder. It stays on your machine.
+- **Uninstall:** `npx skills remove meta-skill-loop meta-skill-feedback meta-skill-refine -g`. Your skills are untouched either way. Deleting `~/.meta-skill-loop` also deletes your feedback and version history.
+- **Windows:** use WSL or Git Bash (meta-skill-loop needs bash and git).
+
 ## Docs
 
 Design, roadmap, and the latest session handoff live in [`docs/`](docs/): [design.md](docs/design.md) and [handoff.md](docs/handoff.md). The code is the source of truth; the docs may lag behind it.

@@ -51,7 +51,7 @@ If the `meta-skill-loop` skill isn't installed at all: tell the user (`npx skill
    EOF
    ```
 
-   msl records which version of the skill the feedback is about.
+   msl records which version of the skill the feedback is about. If it's about an earlier version (for example, a change the user just rolled back), add `--version vN`.
 
 5. **Confirm and continue.** Report the entry id and the skill in one line ("Logged fb-k3x9-012 for pr-review."). If the user also wants the current task redone the right way, do it now. The feedback is recorded either way.
 
