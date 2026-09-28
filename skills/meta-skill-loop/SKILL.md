@@ -7,7 +7,9 @@ description: Manage agent skills, their versions, and their feedback. Use when t
 
 meta-skill-loop keeps feedback and a version history for the user's skills. Skills stay where their tools load them (`~/.cursor/skills`, `~/.agents/skills`, `~/.claude/skills`, a repo's `.cursor/skills`, …), and meta-skill-loop **never edits a skill except to apply a change the user approved**. Its own data lives in `~/.meta-skill-loop/`.
 
-All bookkeeping goes through one script, `msl`. Run it as `~/.meta-skill-loop/bin/msl`. The first time, that file won't exist yet. Set it up once by running the setup script where this skill is installed, then continue:
+All bookkeeping goes through one script, `msl`. Run it as `~/.meta-skill-loop/bin/msl <command>`, exactly like that (not through `bash`), so one approval in the tool covers every call. Just run it: don't check for files first.
+
+Only if it fails because that file doesn't exist (the very first use), set it up once by trying these in order until one works, then run your command again:
 
 ```sh
 bash ~/.agents/skills/meta-skill-loop/scripts/msl init
@@ -15,7 +17,7 @@ bash ~/.claude/skills/meta-skill-loop/scripts/msl init
 bash ~/.cursor/skills/meta-skill-loop/scripts/msl init
 ```
 
-Run only the first one whose file exists. If none does, use the folder your tool loaded this skill from: `bash <that folder>/scripts/msl init`.
+If none works, use the folder your tool loaded this skill from: `bash <that folder>/scripts/msl init`.
 
 **Versions work like git.** Changes in a skill folder are *live edits* until `msl keep` makes them the next version (v2, v3, …). `msl discard` throws them away; they're saved, and `msl restore` brings them back. A skill someone else publishes also tracks the published *upstream* versions, and updates are merged into the user's version instead of overwriting it.
 
@@ -57,7 +59,7 @@ Run `msl history <name>` and confirm with the user which version. Then:
 - **Undo one change:** `msl revert <name> v4`. Everything else stays, including later upstream updates. Prefer this when the user blames one change.
 - **Go back to a version:** `msl rollback <name> v2`. If it says this also brings back older upstream text, tell the user, and only rerun with `--yes` if they agree.
 
-Either way the result is a new version, and the feedback the undone versions fixed is reopened.
+Either way the result is a new version, and the feedback the undone versions fixed is reopened. Then offer to log why the change was worse, as feedback on that version (meta-skill-feedback with `--version v4`), so the next refine knows what to avoid.
 
 ## Updates: "is there an update for grilling?", "update grilling", or an upstream note in status
 

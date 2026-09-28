@@ -7,7 +7,9 @@ description: Improve a skill from its logged feedback. Use when the user says "r
 
 Turn a skill's accumulated feedback into a small, approved change, and record it as a new version tied to the feedback it fixes.
 
-Run `msl` as `~/.meta-skill-loop/bin/msl`. The first time, that file won't exist yet. Set it up once by running the setup script where meta-skill-loop is installed, then continue:
+Run `msl` as `~/.meta-skill-loop/bin/msl <command>`, exactly like that (not through `bash`), so one approval in the tool covers every call. Just run it: don't check for files first.
+
+Only if it fails because that file doesn't exist (the very first use), set it up once by trying these in order until one works, then run your command again:
 
 ```sh
 bash ~/.agents/skills/meta-skill-loop/scripts/msl init
@@ -15,7 +17,7 @@ bash ~/.claude/skills/meta-skill-loop/scripts/msl init
 bash ~/.cursor/skills/meta-skill-loop/scripts/msl init
 ```
 
-Run only the first one whose file exists. If none does, use the folder your tool loaded this skill from: `bash <that folder>/../meta-skill-loop/scripts/msl init`.
+If none works, use the folder your tool loaded this skill from: `bash <that folder>/../meta-skill-loop/scripts/msl init`.
 
 ## Steps
 
