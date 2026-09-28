@@ -36,7 +36,8 @@ ask() {
   local t="$HOME/transcripts/$n.txt"
   case "$AGENT" in
     claude-code)
-      (cd "$PROJECT" && claude -p "$1" --allowedTools "Skill" "Read" \
+      (cd "$PROJECT" && claude -p "$1" --allowedTools "Skill" "Read" "Bash(ls:*)" "Bash(test:*)" \
+        "Bash(bash ~/.claude/skills/meta-skill-loop/scripts/msl:*)" "Bash(bash ~/.agents/skills/meta-skill-loop/scripts/msl:*)" \
         "Bash($skills_dir/meta-skill-loop/scripts/msl:*)" "Bash(bash $skills_dir/meta-skill-loop/scripts/msl:*)" \
         "Bash(../meta-skill-loop/scripts/msl:*)" "Bash(~/.meta-skill-loop/bin/msl:*)" "Bash($HOME/.meta-skill-loop/bin/msl:*)") ;;
     cursor)

@@ -7,13 +7,17 @@ description: Log feedback about how a skill behaved, with evidence, so it can be
 
 Capture one piece of feedback about a skill as a structured entry, then get back to what the user was doing. Capturing never changes the skill. Improving it is a separate, deliberate step (meta-skill-refine).
 
-Run `msl` as `~/.meta-skill-loop/bin/msl`. The first time, that file won't exist yet. Set it up with this one command (it finds the installed meta-skill-loop skill by itself), then continue:
+Run `msl` as `~/.meta-skill-loop/bin/msl`. The first time, that file won't exist yet. Set it up once by running the setup script where meta-skill-loop is installed, then continue:
 
 ```sh
-for d in ~/.agents/skills ~/.cursor/skills ~/.claude/skills ~/.codex/skills .agents/skills .cursor/skills .claude/skills; do [ -f "$d/meta-skill-loop/scripts/msl" ] && bash "$d/meta-skill-loop/scripts/msl" init && break; done
+bash ~/.agents/skills/meta-skill-loop/scripts/msl init
+bash ~/.claude/skills/meta-skill-loop/scripts/msl init
+bash ~/.cursor/skills/meta-skill-loop/scripts/msl init
 ```
 
-If that finds nothing, the `meta-skill-loop` skill isn't installed: tell the user (`npx skills add SoulEvill/meta-skill-loop`) and show them the feedback entry you would have logged, so nothing is lost.
+Run only the first one whose file exists. If none does, use the folder your tool loaded this skill from: `bash <that folder>/../meta-skill-loop/scripts/msl init`.
+
+If the `meta-skill-loop` skill isn't installed at all: tell the user (`npx skills add SoulEvill/meta-skill-loop`) and show them the feedback entry you would have logged, so nothing is lost.
 
 ## Steps
 
