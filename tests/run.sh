@@ -161,6 +161,17 @@ $MSL keep multi -m sync >/dev/null
 lacks "keep re-syncs copies without a new version" "$(cat "$HOME/.claude/skills/multi/SKILL.md")" "drift"
 has "no version for a pure copy sync" "$(version_of multi)" "v2"
 
+echo "same name, different skills"
+mkdir -p "$HOME/team/.cursor/skills" && (cd "$HOME/team" && git init -q)
+skill "$HOME/.cursor/skills/pr-review" pr-review "My personal rules."
+skill "$HOME/team/.cursor/skills/pr-review" pr-review "The team's rules."
+out="$(cd "$HOME/team" && $MSL add pr-review)"
+has "a different skill with the same name is not grouped" "$out" "is a different skill with the same name"
+echo "Tweak." >> "$HOME/.cursor/skills/pr-review/SKILL.md"
+(cd "$HOME/team" && $MSL keep pr-review -m tweak >/dev/null)
+lacks "keeping one never overwrites the other" "$(cat "$HOME/team/.cursor/skills/pr-review/SKILL.md")" "Tweak."
+$MSL remove pr-review >/dev/null
+
 echo "skills CLI upstream: update, merge, conflicts"
 skill "$HOME/.agents/skills/grilling" grilling "Ask the whole frontier in one round.
 Keep going until done."

@@ -23,7 +23,7 @@ npx skills add SoulEvill/meta-skill-loop -g --copy
 That's the standard [`skills` CLI](https://github.com/vercel-labs/skills): pick Cursor, Codex, and/or Claude Code when it asks, or pass `-a cursor -a codex -a claude-code`. `--copy` matters for Cursor, which doesn't reliably load symlinked skills. There's no other setup: the first time you use one of the skills, it creates `~/.meta-skill-loop/`.
 
 - **Update:** `npx skills update`. If you've refined meta-skill-loop's own skills, say "update meta-skill-loop" to merge the new version with your changes for review instead.
-- **Pin a version:** install from a release tag, e.g. `npx skills add https://github.com/SoulEvill/meta-skill-loop/tree/v0.2.0 -g --copy`.
+- **Pin a version (or try a branch):** add `#<tag or branch>`, e.g. `npx skills add "SoulEvill/meta-skill-loop#v0.2.0" -g --copy`.
 - **No Node.js?** `git clone https://github.com/SoulEvill/meta-skill-loop && meta-skill-loop/install.sh` (add `--claude` for Claude Code) copies the same folders.
 - **Privacy note:** the `skills` CLI sends anonymous usage stats; set `DO_NOT_TRACK=1` to turn that off.
 

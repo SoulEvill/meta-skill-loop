@@ -490,7 +490,7 @@ EOF
 }
 
 cmd_add() {
-  local target="" kind="" source="" rev="" name="" dir="" n p top
+  local target="" kind="" source="" rev="" name="" dir="" n p top others
   while [ $# -gt 0 ]; do
     case "$1" in
       --kind) kind="${2:?--kind needs a value}"; shift ;;
@@ -514,12 +514,20 @@ cmd_add() {
   case "$name" in */*|.*|'') die "invalid skill name '$name'" ;; esac
   is_managed "$name" && die "'$name' is already managed (msl status $name)"
 
-  # Every installed copy with this name; an explicit path goes first.
+  # Every installed copy of this skill; an explicit path goes first. Only identical
+  # copies are grouped: a different skill that happens to share the name (say, a
+  # project's own pr-review next to your personal one) must never be overwritten.
   set --
   [ -n "$dir" ] && set -- "$dir"
+  others=""
   while IFS="$TAB" read -r n p; do
     [ "$n" = "$name" ] || continue
     [ "$p" = "$dir" ] && continue
+    if [ $# -gt 0 ] && [ "$(dir_hash "$p")" != "$(dir_hash "$1")" ]; then
+      others="$others$p
+"
+      continue
+    fi
     set -- "$@" "$p"
   done <<EOF
 $(all_skills)
@@ -570,11 +578,13 @@ EOF
 
   printf 'added %s (%s%s) as v1\n' "$name" "$kind" "${source:+, from $source}"
   for p in "$@"; do printf '  %s\n' "$(tilde "$p")"; done
-  if [ $# -gt 1 ]; then
-    for p in "$@"; do
-      [ "$(dir_hash "$p")" = "$(dir_hash "$PRIMARY")" ] || warn "copy at $(tilde "$p") differs from $(tilde "$PRIMARY"); the first path is the primary copy"
-    done
-  fi
+  while IFS= read -r p; do
+    [ -n "$p" ] || continue
+    printf 'note: %s is a different skill with the same name; it was not added and will not be touched.\n' "$(tilde "$p")"
+    printf '      To manage that one instead: msl remove %s, then msl add %s\n' "$name" "$(tilde "$p")"
+  done <<EOF
+$others
+EOF
   return 0
 }
 

@@ -49,3 +49,4 @@ Run `msl` as `~/.meta-skill-loop/bin/msl`. The first time, that file won't exist
 
 - Never change a skill before the user approves the proposed edit.
 - Don't paste raw feedback into anything that leaves the machine.
+- If the user regrets a change after keeping it, `msl rollback <name> <vN> --only` undoes just that version and reopens its feedback.
