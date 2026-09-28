@@ -79,10 +79,10 @@ copy_tree() {
   done
 }
 
-# Newest existing file among the arguments.
+# Newest existing file among the paths on stdin (one per line).
 newest() {
   local best="" f
-  for f in "$@"; do
+  while IFS= read -r f; do
     [ -f "$f" ] || continue
     if [ -z "$best" ] || [ "$f" -nt "$best" ]; then best="$f"; fi
   done
@@ -244,7 +244,7 @@ has_upstream() { g show-ref -q --verify refs/heads/upstream; }
 
 # Tree id of a folder's content, without touching the real index.
 tree_of_dir() {
-  local idx="$GD/msl-scratch-index" t
+  local idx="$GD/msl-scratch-index.$$" t
   rm -f "$idx"
   GIT_INDEX_FILE="$idx" g --work-tree="$1" add -A >/dev/null 2>&1
   t="$(GIT_INDEX_FILE="$idx" g --work-tree="$1" write-tree)"
@@ -515,7 +515,7 @@ reopen() { # ids...
 session_file() { # tool
   local slug d
   if [ -n "${CLAUDE_CODE_SESSION_ID:-}" ]; then
-    newest "$HOME"/.claude/projects/*/"$CLAUDE_CODE_SESSION_ID".jsonl
+    printf '%s\n' "$HOME"/.claude/projects/*/"$CLAUDE_CODE_SESSION_ID".jsonl | newest
     return 0
   fi
   case "$1" in
@@ -524,13 +524,11 @@ session_file() { # tool
         [ -n "$d" ] || continue
         slug="$(printf '%s' "$d" | sed 's/[^A-Za-z0-9]/-/g')"
         [ -d "$HOME/.claude/projects/$slug" ] || continue
-        newest "$HOME/.claude/projects/$slug"/*.jsonl
+        printf '%s\n' "$HOME/.claude/projects/$slug"/*.jsonl | newest
         return 0
       done ;;
     codex)
-      [ -d "$HOME/.codex/sessions" ] || return 0
-      # shellcheck disable=SC2046  # file names have no spaces
-      newest $(find "$HOME/.codex/sessions" -name 'rollout-*.jsonl' 2>/dev/null) ;;
+      find "$HOME/.codex/sessions" -name 'rollout-*.jsonl' 2>/dev/null | newest ;;
   esac
   return 0
 }
