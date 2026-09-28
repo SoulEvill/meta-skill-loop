@@ -1,0 +1,42 @@
+name: agent-tests
+
+# Real-agent end-to-end tests. They cost model calls and need API keys, so they never
+# run automatically: only the repository owner can start them (Actions tab > agent-tests
+# > Run workflow). Keys live in the "agent-tests" environment, which you can also set to
+# require your approval. Fork PRs can't trigger this or read its secrets.
+on:
+  workflow_dispatch:
+    inputs:
+      agent:
+        description: Which agent to test
+        type: choice
+        options: [claude-code, cursor, codex]
+        default: claude-code
+
+permissions:
+  contents: read
+
+jobs:
+  agent:
+    if: github.actor == github.repository_owner
+    runs-on: ubuntu-latest
+    environment: agent-tests
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install the agent CLI
+        env:
+          AGENT: ${{ inputs.agent }}
+        run: |
+          case "$AGENT" in
+            claude-code) npm install -g @anthropic-ai/claude-code ;;
+            cursor) curl -fsSL https://cursor.com/install | bash && echo "$HOME/.local/bin" >> "$GITHUB_PATH" ;;
+            codex) npm install -g @openai/codex ;;
+          esac
+      - name: Run
+        env:
+          AGENT: ${{ inputs.agent }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          bash tests/agent/run.sh "$AGENT"
