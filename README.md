@@ -24,7 +24,7 @@ That's the standard [`skills` CLI](https://github.com/vercel-labs/skills): pick 
 
 - **Update:** `npx skills update`. If you've refined meta-skill-loop's own skills, say "update meta-skill-loop" to merge the new version with your changes for review instead.
 - **Pin a version (or try a branch):** add `#<tag or branch>`, e.g. `npx skills add "SoulEvill/meta-skill-loop#v0.2.0" -g --copy`.
-- **No Node.js?** `git clone https://github.com/SoulEvill/meta-skill-loop && meta-skill-loop/install.sh` (add `--claude` for Claude Code) copies the same folders.
+- **No Node.js?** Copy the folders yourself: `git clone https://github.com/SoulEvill/meta-skill-loop && mkdir -p ~/.agents/skills && cp -R meta-skill-loop/skills/* ~/.agents/skills/` (for Claude Code, also copy them to `~/.claude/skills/`).
 - **Fewer prompts:** the skills run one script, `~/.meta-skill-loop/bin/msl`. Allow it once in your tool (in Cursor, add it to the command allowlist; in Claude Code, allow `Bash(~/.meta-skill-loop/bin/msl:*)`), so it doesn't ask every time.
 - **Privacy note:** the `skills` CLI sends anonymous usage stats; set `DO_NOT_TRACK=1` to turn that off.
 
@@ -51,12 +51,12 @@ Talk to your agent:
 | Say | What happens |
 |---|---|
 | "meta-skill-loop add" | lists skills you have that aren't managed yet, and adds the ones you pick (as v1) |
-| "feedback on grill-me: it asks way too many questions" | logs an entry: what you asked, what happened, what you expected, evidence, and which version |
+| "feedback on grill-me: it asks way too many questions" / "record this" | logs an entry: a title, severity, what you asked, what happened, what you expected, evidence, the version, and a copy of the conversation |
 | "refine grill-me" | groups feedback into themes, proposes the smallest edit, and applies it after you approve |
-| "keep it" / "undo that" | the edit becomes the next version, or is discarded (and can be redone) |
+| "keep it" / "discard it" | the edit becomes the next version, or is thrown away (saved, so it can be restored) |
 | "show versions of grill-me" / "compare v2 and v4" | history with the feedback each version fixed and received |
-| "grill-me got worse, undo v4" / "go back to v2" | rollback, as a new version; the feedback those versions fixed is reopened |
-| "is there an update for grilling?" | checks and shows what upstream changed; nothing changes |
+| "grill-me got worse, undo v4" / "go back to v2" | revert one version, or roll back to one, as a new version; the feedback those versions fixed is reopened |
+| "is there an update for grilling?" | checks and shows what upstream changed; nothing live changes |
 | "update grilling" | fetches the new upstream version and merges it with your changes for review; your version stays live until you approve |
 | "meta-skill-loop status" | versions, open feedback, and anything needing attention |
 
@@ -71,12 +71,16 @@ Talk to your agent:
 ### `msl` (what the skills call; you can too)
 
 ```
-msl status [name]                 msl scan                    msl add <name|path>        msl remove <name>
-msl feedback add <name> < body    msl feedback list <name>    msl feedback mark <id> <status>
-msl diff <name> [vA [vB] | --upstream | --incoming | --merge | --saved]      msl history <name>
-msl keep <name> -m <summary> [--fixes ids]          msl undo <name>            msl redo <name>
-msl rollback <name> <vN> [--only]                   msl update <name> [--check | --apply | --abort | --take-upstream]
+msl status [name]                  msl add [name|path]         msl remove <name>
+msl feedback add <name> -t <title> [--severity P0|P1|P2|P3|nit] < body
+msl feedback list <name> [--all]   msl feedback mark <id> open|applied|declined [--fixed-in vN]
+msl diff <name> [vA [vB] | --upstream | --merge | --saved]      msl history <name>
+msl keep <name> -m <summary> [--fixes ids]    msl discard <name>    msl restore <name>
+msl revert <name> <vN>             msl rollback <name> <vN>
+msl update <name> [--check | --apply | --abort | --take-upstream]
 ```
+
+`msl help` has every option.
 
 ## How it thinks about skills
 
@@ -89,20 +93,17 @@ msl rollback <name> <vN> [--only]                   msl update <name> [--check |
   - `changed`: live edits not kept yet; they're saved automatically.
   - `upstream-update`: an installer or `git pull` put a new upstream version in place. Your version is safe; `msl update` merges.
   - `upstream-live`: an older upstream version was put back.
-  - `copies-differ`: the same skill in several tool folders no longer matches.
+  - `copies-differ`: the same skill is installed in several tool folders, and two were edited differently. (An edit in any one copy is simply a live edit; keeping it updates every copy.)
   - `missing`: the folder is gone.
-- **Feedback entries** are one file each, with ids like `fb-k3x9-012`: this workspace's id plus a sequence number. Frontmatter records:
-  - `version`: the version the feedback was about;
-  - `tool`, `project`, `severity`;
-  - `origin`: `explicit`, or `observed` for future automatic capture;
-  - `status`: `candidate`, `open`, `applied`, `declined`, or `resolved-upstream`.
-- **Privacy.** Feedback can contain work details. The workspace is local; never push it anywhere public.
+- **Feedback entries** are one Markdown file each, with ids like `fb-k3x9a2-012`: this workspace's id plus a sequence number. The header records the title, the version the feedback was about, when, the tool, a pointer to the saved conversation, the severity (`P0` harmful, `P1` wrong result, `P2` worked badly, `P3` minor, `nit`), the status (`open`, `applied`, `declined`), and `fixed_in` (the version that fixed it). The body is free-form: usually what was asked, observed, and expected, what the user said, and evidence. The full format is in [design.md](docs/design.md#5-data-model).
+- **Conversations.** When the tool keeps the conversation in a file (Claude Code, Codex), a copy is saved in `~/.meta-skill-loop/sessions/` with the feedback, since tools delete old ones. In Cursor, the entry itself carries the relevant exchanges.
+- **Privacy.** Feedback and conversation copies can contain work details. The workspace is local; never push it anywhere public.
 
 ## Good to know
 
 - **Skills that live in a git repo** (a team repo's `.cursor/skills`): pull as usual. meta-skill-loop records what the pull brought and never rewrites the repo's files to do so. Refinements to a team skill are uncommitted changes in that repo, so `git pull` may ask you to commit or stash them first. For a team skill, prefer sending the change to the repo.
 - **Two different skills with the same name** (say, your personal `pr-review` and a project's own): only one can be managed under that name. The other is left untouched, and `add` tells you how to switch.
-- **Your data** is plain folders in `~/.meta-skill-loop` (feedback files and a small git repo per skill). Back it up like any folder. It stays on your machine.
+- **Your data** is plain folders in `~/.meta-skill-loop` (feedback files, conversation copies, and a small git repo per skill). Back it up like any folder. It stays on your machine. Conversation copies are the bulk of it; delete old ones in `sessions/` if it grows.
 - **Uninstall:** `npx skills remove meta-skill-loop meta-skill-feedback meta-skill-refine -g`. Your skills are untouched either way. Deleting `~/.meta-skill-loop` also deletes your feedback and version history.
 - **Windows:** use WSL or Git Bash (meta-skill-loop needs bash and git).
 
@@ -118,7 +119,7 @@ TEST_BASH=/bin/bash tests/run.sh      # on macOS: check bash 3.2 compatibility
 tests/lint-skills.sh                  # skills stay portable (Agent Skills format)
 tests/package.sh                      # install with the real skills CLI (needs Node)
 tests/agent/run.sh claude-code        # real agent end to end (needs an API key; costs model calls)
-shellcheck install.sh tests/*.sh tests/agent/*.sh skills/meta-skill-loop/scripts/msl
+shellcheck tests/*.sh tests/agent/*.sh skills/meta-skill-loop/scripts/msl
 ```
 
 Releases, CI, and repository settings: [docs/maintaining.md](docs/maintaining.md).

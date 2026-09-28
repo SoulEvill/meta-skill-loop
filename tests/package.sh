@@ -30,7 +30,7 @@ if [ -x "$M" ]; then ok "launcher created"; else bad "launcher created"; fi
 if "$M" version >/dev/null; then ok "launcher runs msl"; else bad "launcher runs msl"; fi
 out="$("$M" add meta-skill-feedback)"
 if grep -qF "as v1" <<<"$out"; then ok "a skill installed by the CLI can be managed"; else bad "a skill installed by the CLI can be managed" "$out"; fi
-printf -- '- observed: test\n' | "$M" feedback add meta-skill-feedback --tool ci >/dev/null
+printf -- '- observed: test\n' | "$M" feedback add meta-skill-feedback -t test --tool ci >/dev/null
 out="$("$M" status meta-skill-feedback)"
 if grep -qE 'meta-skill-feedback +[a-z-]+ +v1 +1 ' <<<"$out"; then ok "feedback recorded"; else bad "feedback recorded" "$out"; fi
 

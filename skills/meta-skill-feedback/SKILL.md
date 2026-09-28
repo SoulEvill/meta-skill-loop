@@ -1,11 +1,11 @@
 ---
 name: meta-skill-feedback
-description: Log feedback about how a skill behaved, with evidence, so it can be improved later. Use when the user says "feedback on <skill>", "log feedback", "that skill should…", "next time don't…", "remember this for the skill", or corrects how a skill just behaved and agrees to log it. Works for any skill, managed or not.
+description: Log feedback about how a skill behaved, with evidence, so it can be improved later. Use when the user says "feedback on <skill>", "log feedback", "record this", "that skill should…", "next time don't…", "remember this for the skill", or corrects how a skill just behaved and agrees to log it. Works for any skill, managed or not.
 ---
 
 # meta-skill-feedback
 
-Capture one piece of feedback about a skill as a structured entry, then get back to what the user was doing. Capturing never changes the skill. Improving it is a separate, deliberate step (meta-skill-refine).
+Capture one piece of feedback about a skill as an entry, then get back to what the user was doing. Capturing never changes the skill. Improving it is a separate, deliberate step (meta-skill-refine).
 
 Run `msl` as `~/.meta-skill-loop/bin/msl`. The first time, that file won't exist yet. Set it up once by running the setup script where meta-skill-loop is installed, then continue:
 
@@ -27,33 +27,53 @@ If the `meta-skill-loop` skill isn't installed at all: tell the user (`npx skill
 
 2. **Make sure it's managed.** Run `msl status <name>`. If it isn't managed, run `msl add <name>` and tell the user in one line that it's now managed. The skill itself is not modified.
 
-3. **Write the entry.** Use short bullet points with only the facts that will help someone improve the skill later:
-   - `asked:` what the user asked for when the skill ran (quote briefly)
-   - `observed:` what the skill made you do that was wrong or unwanted; be concrete
-   - `expected:` what the user wanted instead
-   - `user said:` the user's own words, verbatim, if they gave feedback in words
-   - `evidence:` the smallest excerpt that shows the problem (a few lines of output, a file:line, the instruction in the skill that caused it). Trim it.
+3. **Write the entry.**
+   - **Title:** one line naming the problem, e.g. "Buries the real bug under style nits".
+   - **Severity:**
+
+     | Level | Meaning |
+     |---|---|
+     | `P0` | harmful: destroyed, overwrote, or leaked something, or ran something it shouldn't have |
+     | `P1` | wrong result the user had to catch |
+     | `P2` | worked, but badly; cost the user time (the default) |
+     | `P3` | minor friction |
+     | `nit` | wording, format, taste |
+
+   - **Body:** free-form Markdown. Use these sections where they apply, and add anything else the user wants recorded:
+     - `## Asked`: what the user asked for when the skill ran (quote briefly)
+     - `## Observed`: what the skill made you do that was wrong or unwanted; be concrete
+     - `## Expected`: what the user wanted instead
+     - `## User said`: the user's own words, verbatim
+     - `## Evidence`: the smallest excerpt that shows the problem (a few lines of output, a file:line, the instruction in the skill that caused it)
+
+   msl saves a copy of the whole conversation with the entry when the tool keeps it in a file (Claude Code and Codex do). In Cursor or any other tool, add a `## Conversation` section with the last few exchanges, trimmed.
 
    Leave out secrets, credentials, tokens, customer data, and anything the user wouldn't want stored. When unsure, summarize instead of quoting.
 
-4. **Log it.** Pipe the bullets to `msl feedback add` with these flags:
-   - `--severity`: `nit` (cosmetic), `annoying` (worked but badly), or `wrong` (incorrect result or harmful action).
-   - `--tool`: the agent you're running in: `cursor`, `codex`, `claude-code`, or another name.
-   - `--project`: only if the current folder name isn't a good project name.
+4. **Log it.** Pipe the body to `msl feedback add` with the title, severity, and `--tool` (the agent you're running in: `cursor`, `codex`, `claude-code`, or another name):
 
    ```sh
-   ~/.meta-skill-loop/bin/msl feedback add pr-review --severity annoying --tool cursor <<'EOF'
-   - asked: "review PR 482"
-   - observed: listed 30 style nits and missed the unhandled retry error
-   - expected: correctness issues first; style only if asked
-   - user said: "stop with the nits, what's actually broken?"
-   - evidence: review opened with 12 naming comments; retry.go:88 swallows the error
+   ~/.meta-skill-loop/bin/msl feedback add pr-review -t "Buries the real bug under style nits" --severity P2 --tool cursor <<'EOF'
+   ## Asked
+   "review PR 482"
+
+   ## Observed
+   Listed 30 style nits and missed the unhandled retry error.
+
+   ## Expected
+   Correctness issues first; style only if asked.
+
+   ## User said
+   "stop with the nits, what's actually broken?"
+
+   ## Evidence
+   retry.go:88 swallows the error.
    EOF
    ```
 
-   msl records which version of the skill the feedback is about. If it's about an earlier version (for example, a change the user just rolled back), add `--version vN`.
+   msl records which version of the skill the feedback is about. If it's about an earlier version (for example, a change the user just undid), add `--version vN`.
 
-5. **Confirm and continue.** Report the entry id and the skill in one line ("Logged fb-k3x9-012 for pr-review."). If the user also wants the current task redone the right way, do it now. The feedback is recorded either way.
+5. **Confirm and continue.** Report the entry id and the skill in one line ("Logged fb-k3x9a2-012 for pr-review."). If the user also wants the current task redone the right way, do it now. The feedback is recorded either way.
 
 ## Notes
 

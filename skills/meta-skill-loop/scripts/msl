@@ -19,10 +19,12 @@ set -euo pipefail
 unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_COMMON_DIR 2>/dev/null || true
 
 MSL_VERSION="0.2.0"
+MSL_FORMAT=1
 MSL_HOME="${MSL_HOME:-$HOME/.meta-skill-loop}"
 TAB="$(printf '\t')"
-GD=""       # git dir of the skill being worked on (set by use_skill)
-PRIMARY=""  # its live folder
+GD=""            # git dir of the skill being worked on (set by use_skill)
+PRIMARY=""       # its live folder: the copy that holds the edits
+COPY_CONFLICT=""  # set when two installed copies were edited differently
 
 # ---------------------------------------------------------------- helpers ---
 
@@ -57,6 +59,7 @@ untilde() {
 # Files that make up a skill: everything except dotfiles and dot-directories.
 skill_files() { (cd "$1" && find -L . -type f ! -path '*/.*' | LC_ALL=C sort); }
 
+# Content fingerprint of a folder, before it has a version history.
 dir_hash() {
   [ -d "$1" ] || { echo "missing"; return 0; }
   skill_files "$1" | while IFS= read -r f; do
@@ -76,6 +79,16 @@ copy_tree() {
   done
 }
 
+# Newest existing file among the arguments.
+newest() {
+  local best="" f
+  for f in "$@"; do
+    [ -f "$f" ] || continue
+    if [ -z "$best" ] || [ "$f" -nt "$best" ]; then best="$f"; fi
+  done
+  printf '%s' "$best"
+}
+
 # Read a key from a SKILL.md frontmatter block.
 fm_get() {
   awk -v k="$2" '
@@ -90,19 +103,20 @@ fm_get() {
     }' "$1"
 }
 
-# Rewrite `key: value` in a frontmatter file (adds the key if absent).
-set_field() { # file key value
+# `key: value` fields in msl's own files (workspace.yaml, skill.yaml, feedback frontmatter).
+field() { awk -v k="$2" 'index($0, k ": ") == 1 { print substr($0, length(k) + 3); exit }' "$1"; }
+
+# Set `key: value` in a feedback file's frontmatter (added if absent), or delete it (no value).
+set_field() { # file key [value]
   local tmp
   tmp="$(mktemp)"
-  awk -v k="$2" -v v="$3" '
+  awk -v k="$2" -v v="${3:-}" -v del="$([ $# -ge 3 ] || echo 1)" '
     NR == 1 && $0 == "---" { infm = 1; print; next }
-    infm && $0 == "---" { if (!done) print k ": " v; infm = 0; print; next }
-    infm && index($0, k ": ") == 1 { print k ": " v; done = 1; next }
+    infm && $0 == "---" { if (!done && !del) print k ": " v; infm = 0; print; next }
+    infm && index($0, k ": ") == 1 { if (!del) print k ": " v; done = 1; next }
     { print }' "$1" > "$tmp"
   mv "$tmp" "$1"
 }
-
-field() { awk -v k="$2" 'index($0, k ": ") == 1 { print substr($0, length(k) + 3); exit }' "$1"; }
 
 # ---------------------------------------------------------------- workspace ---
 
@@ -112,10 +126,10 @@ ensure_ws() { [ -f "$MSL_HOME/workspace.yaml" ] || cmd_init >/dev/null; }
 
 new_ws_id() {
   local id=""
-  while [ "${#id}" -lt 4 ]; do
-    id="$id$(dd if=/dev/urandom bs=64 count=1 2>/dev/null | LC_ALL=C tr -dc 'a-z0-9' | cut -c1-4)"
+  while [ "${#id}" -lt 6 ]; do
+    id="$id$(dd if=/dev/urandom bs=64 count=1 2>/dev/null | LC_ALL=C tr -dc 'a-z0-9')"
   done
-  printf '%s\n' "$id" | cut -c1-4
+  printf '%s\n' "$id" | cut -c1-6
 }
 
 # -------------------------------------------------------- skill discovery ---
@@ -149,8 +163,9 @@ all_skills() {
 }
 
 # Read a skill's entry in the `skills` CLI lock file (~/.agents/.skill-lock.json).
-#   lock_info <name> source   -> "https://github.com/o/r.git (path/to/skill)"
-#   lock_info <name> rev      -> first 12 chars of the upstream folder hash
+#   lock_info <name> url    -> https://github.com/o/r.git
+#   lock_info <name> path   -> skills/<name> (the folder inside that repo)
+#   lock_info <name> rev    -> first 12 chars of the upstream folder hash
 lock_info() {
   local lock="$HOME/.agents/.skill-lock.json"
   [ -f "$lock" ] || return 0
@@ -163,10 +178,8 @@ lock_info() {
     if (!e || typeof e !== "object") process.exit(0);
     let out = "";
     if (what === "rev") out = String(e.skillFolderHash || e.computedHash || "").slice(0, 12);
-    else {
-      const src = e.sourceUrl || e.source || "";
-      if (src) out = src + (e.skillPath ? " (" + String(e.skillPath).replace(/\/?SKILL\.md$/, "") + ")" : "");
-    }
+    else if (what === "path") out = String(e.skillPath || "").replace(/\/?SKILL\.md$/, "");
+    else out = e.sourceUrl || e.source || "";
     process.stdout.write(out);
   ' "$lock" "$1" "$2" 2>/dev/null || true
 }
@@ -184,8 +197,6 @@ meta_paths() {
     "$(meta_file "$1")" | while IFS= read -r x; do untilde "$x"; done
 }
 
-primary_path() { meta_paths "$1" | sed -n 1p; }
-
 managed_names() {
   local d
   for d in "$MSL_HOME"/skills/*/; do
@@ -194,17 +205,22 @@ managed_names() {
   return 0
 }
 
-write_meta() { # name kind source added paths...
-  local name="$1" kind="$2" source="$3" added="$4" p
-  shift 4
+write_meta() { # name kind source_url source_path added paths...
+  local name="$1" kind="$2" url="$3" spath="$4" added="$5" p
+  shift 5
   {
-    printf 'name: %s\n' "$name"
-    printf 'kind: %s\n' "$kind"
-    printf 'source: %s\n' "$source"
-    printf 'added: %s\n' "$added"
-    printf 'paths:\n'
+    printf 'name: %s\nkind: %s\n' "$name" "$kind"
+    [ -z "$url" ] || printf 'source_url: %s\n' "$url"
+    [ -z "$spath" ] || printf 'source_path: %s\n' "$spath"
+    printf 'added: %s\npaths:\n' "$added"
     for p in "$@"; do printf '  - %s\n' "$(tilde "$p")"; done
   } > "$(meta_file "$name")"
+}
+
+source_of() { # name -> "url (path)" for display
+  local url spath
+  url="$(meta_get "$1" source_url)"; spath="$(meta_get "$1" source_path)"
+  [ -z "$url" ] || printf '%s%s' "$url" "${spath:+ ($spath)}"
 }
 
 # ------------------------------------------------------------ per-skill git ---
@@ -214,10 +230,14 @@ g() {
     -c core.autocrlf=false -c advice.detachedHead=false --git-dir="$GD" "$@"
 }
 
+# git in a pending-merge worktree
+gw() { local d="$1"; shift; git -C "$d" -c user.name=meta-skill-loop -c user.email=msl@localhost "$@"; }
+
 use_skill() {
   require_managed "$1"
   GD="$(skill_dir "$1")/git"
-  PRIMARY="$(primary_path "$1")"
+  PRIMARY="$(meta_paths "$1" | sed -n 1p)"
+  resolve_copies "$1"
 }
 
 has_upstream() { g show-ref -q --verify refs/heads/upstream; }
@@ -236,6 +256,55 @@ live_tree() { tree_of_dir "$PRIMARY"; }
 mine_tree() { g rev-parse 'mine^{tree}'; }
 is_dirty() { [ "$(live_tree)" != "$(mine_tree)" ]; }
 
+# Make another installed copy the primary one (the working tree of the skill's repo).
+set_primary() { # name path
+  local name="$1" p="$2" kind url spath added r rest
+  kind="$(meta_get "$name" kind)"; url="$(meta_get "$name" source_url)"
+  spath="$(meta_get "$name" source_path)"; added="$(meta_get "$name" added)"
+  rest="$(meta_paths "$name" | grep -vxF "$p" || true)"
+  set -- "$p"
+  while IFS= read -r r; do [ -z "$r" ] || set -- "$@" "$r"; done <<EOF
+$rest
+EOF
+  write_meta "$name" "$kind" "$url" "$spath" "$added" "$@"
+  g config core.worktree "$p"
+  PRIMARY="$p"
+  COPY_CONFLICT=""
+}
+
+# A skill can be installed in several tool folders (say ~/.agents/skills and
+# ~/.claude/skills); msl keeps them identical. Whichever copy was edited holds the
+# live edits: if that's not the primary one, it becomes the primary. If two copies
+# were edited differently, that's a conflict the user resolves (msl keep --from).
+resolve_copies() { # name
+  local mine pt p t edited="" et=""
+  COPY_CONFLICT=""
+  [ -n "$(meta_paths "$1" | sed -n 2p)" ] || return 0   # only one copy
+  mine="$(mine_tree)"
+  if [ -d "$PRIMARY" ]; then pt="$(live_tree)"; else pt="missing"; fi
+  while IFS= read -r p; do
+    if [ -z "$p" ] || [ ! -f "$p/SKILL.md" ]; then continue; fi
+    t="$(tree_of_dir "$p")"
+    if [ "$t" = "$mine" ] || [ "$t" = "$pt" ]; then continue; fi
+    if [ "$pt" != "$mine" ] && [ "$pt" != missing ]; then COPY_CONFLICT=1; return 0; fi
+    if [ -z "$edited" ]; then edited="$p"; et="$t"
+    elif [ "$t" != "$et" ]; then COPY_CONFLICT=1; return 0; fi
+  done <<EOF
+$(meta_paths "$1" | sed 1d)
+EOF
+  if [ -n "$edited" ]; then
+    set_primary "$1" "$edited"
+  elif [ "$pt" = missing ]; then
+    # The primary copy is gone but another one exists: use it.
+    while IFS= read -r p; do
+      if [ -n "$p" ] && [ -f "$p/SKILL.md" ]; then set_primary "$1" "$p"; break; fi
+    done <<EOF
+$(meta_paths "$1" | sed 1d)
+EOF
+  fi
+  return 0
+}
+
 # Upstream revisions and trees already recorded on the upstream branch.
 upstream_revs() { has_upstream || return 0; g log upstream --format=%B | awk '/^Upstream-Rev: /{ print $2 }'; }
 upstream_trees() { has_upstream || return 0; g log upstream --format=%T; }
@@ -252,6 +321,7 @@ current_rev() { # name
 
 version_at() { g tag --points-at "$1" 2>/dev/null | grep -E '^v[0-9]+$' | sort -t v -k2 -n | tail -n 1 || true; }
 current_version() { version_at mine; }
+require_version() { g rev-parse -q --verify "refs/tags/$1" >/dev/null || die "no version $1 (msl history $2)"; }
 
 next_version() {
   local n
@@ -261,26 +331,17 @@ next_version() {
 
 # State of a managed skill (call use_skill first):
 #   clean            live folder = your current version
-#   changed          uncommitted edits (yours, a creator tool's, or a hand edit)
+#   changed          live edits not kept yet (yours, a creator tool's, or a hand edit)
 #   upstream-update  an installer or git pull put a NEW upstream version in place
 #   upstream-live    a known upstream version was put back; your refinements aren't live
-#   copies-differ    other installed copies don't match the primary one
+#   copies-differ    two installed copies were edited differently
 #   missing          the folder is gone
 skill_state() { # name
-  local t rev p
+  local t rev
   [ -d "$PRIMARY" ] || { echo missing; return 0; }
+  [ -z "$COPY_CONFLICT" ] || { echo copies-differ; return 0; }
   t="$(live_tree)"
-  if [ "$t" = "$(mine_tree)" ]; then
-    while IFS= read -r p; do
-      [ -n "$p" ] || continue
-      if [ -d "$p" ] && [ "$(dir_hash "$p")" != "$(dir_hash "$PRIMARY")" ]; then
-        echo copies-differ; return 0
-      fi
-    done <<EOF
-$(meta_paths "$1" | sed 1d)
-EOF
-    echo clean; return 0
-  fi
+  [ "$t" != "$(mine_tree)" ] || { echo clean; return 0; }
   if has_upstream; then
     if upstream_trees | grep -x "$t" >/dev/null; then echo upstream-live; return 0; fi
     rev="$(current_rev "$1")"
@@ -289,7 +350,7 @@ EOF
   echo changed
 }
 
-# Save uncommitted edits as a stash entry, so nothing unversioned can be lost.
+# Save live edits as a stash entry, so nothing unversioned can be lost.
 autosave() {
   local t last s
   t="$(live_tree)"
@@ -304,7 +365,7 @@ autosave() {
 save_if_changed() { [ "$(skill_state "$1")" != changed ] || autosave; }
 
 # True when the latest saved edits are gone from the folder (overwritten by an
-# update or reinstall) without having been kept as a version or discarded with undo.
+# update or reinstall) without having been kept as a version or discarded.
 lost_edits() {
   local s t
   s="$(g rev-parse -q --verify refs/stash 2>/dev/null)" || return 1
@@ -324,9 +385,9 @@ has_refinements() {
 sync_mirrors() { # name
   local p
   while IFS= read -r p; do
-    if [ -n "$p" ] && [ -f "$p/SKILL.md" ]; then copy_tree "$PRIMARY" "$p"; fi
+    if [ -n "$p" ] && [ "$p" != "$PRIMARY" ] && [ -f "$p/SKILL.md" ]; then copy_tree "$PRIMARY" "$p"; fi
   done <<EOF
-$(meta_paths "$1" | sed 1d)
+$(meta_paths "$1")
 EOF
 }
 
@@ -337,15 +398,29 @@ checkout_mine() { # name
   sync_mirrors "$1"
 }
 
+# Tag the new tip of mine as the next version and put it live. Prints the version.
+tag_version() { # name v
+  g tag "$2"
+  checkout_mine "$1"
+  printf '%s\n' "$2"
+}
+
 # Commit the live folder as the next version. Prints the version.
-commit_version() { # name message [trailers]
+commit_version() { # name message
   local v
   v="$(next_version)"
   g add -A >/dev/null 2>&1
-  if [ -n "${3:-}" ]; then g commit -q --allow-empty -m "$v: $2" -m "$3"; else g commit -q --allow-empty -m "$v: $2"; fi
-  g tag "$v"
-  sync_mirrors "$1"
-  printf '%s\n' "$v"
+  g commit -q --allow-empty -m "$v: $2"
+  tag_version "$1" "$v"
+}
+
+# Take the recorded upstream as the next version (a merge commit with upstream's tree).
+take_upstream() { # name subject
+  local v rev
+  v="$(next_version)"
+  rev="$(latest_upstream_rev)"
+  g update-ref refs/heads/mine "$(g commit-tree 'upstream^{tree}' -p mine -p upstream -m "$v: $2" -m "Upstream-Rev: $rev")"
+  tag_version "$1" "$v"
 }
 
 # Record a folder's content as a new upstream version (no-op if already known).
@@ -357,8 +432,15 @@ import_upstream() { # dir rev
   g update-ref refs/heads/upstream "$c"
 }
 
-# Commit messages' "Fixes:" trailers for commits in a range (first parent only).
-fixes_in() { g log --first-parent --format=%B "$@" | awk '/^Fixes: /{ sub(/^Fixes: /, ""); gsub(/,/, " "); print }' | tr ' ' '\n' | grep -v '^$' || true; }
+merge_dir() { printf '%s\n' "$(skill_dir "$1")/merge"; }
+
+drop_merge() { # name
+  local wt
+  wt="$(merge_dir "$1")"
+  [ -d "$wt" ] || return 0
+  g worktree remove --force "$wt" >/dev/null 2>&1 || rm -rf "$wt"
+  g worktree prune
+}
 
 # ---------------------------------------------------------------- feedback ---
 
@@ -369,6 +451,8 @@ feedback_file() { # fb-id -> path
   printf '%s\n' "$f"
 }
 
+check_ids() { local id; for id in $(printf '%s' "$1" | tr ',' ' '); do feedback_file "$id" >/dev/null; done; }
+
 next_fb_seq() {
   local wid max
   wid="$(ws_id)"
@@ -377,49 +461,84 @@ next_fb_seq() {
   echo $(( ${max:-0} + 1 ))
 }
 
-count_feedback() { # name status
-  local dir
-  dir="$(skill_dir "$1")/feedback"
-  [ -d "$dir" ] || { echo 0; return 0; }
-  { grep -l "^status: $2\$" "$dir"/fb-*.md 2>/dev/null || true; } | wc -l | tr -d ' '
-}
-
-# Feedback marked applied by any of the given versions (resolution: vN), for one skill.
-applied_by() { # name versions...
-  local name="$1" f v
-  shift
-  for f in "$(skill_dir "$name")"/feedback/fb-*.md; do
-    [ -f "$f" ] || continue
-    grep -q '^status: applied$' "$f" || continue
-    for v in "$@"; do
-      if [ "$(field "$f" resolution)" = "$v" ]; then field "$f" id; break; fi
-    done
-  done
+feedback_files() { # name -> the skill's entries
+  local f
+  for f in "$(skill_dir "$1")"/feedback/fb-*.md; do [ -f "$f" ] && printf '%s\n' "$f"; done
   return 0
 }
 
-versions_in() { # range -> version tags of first-parent commits in it
-  g log --first-parent --format=%H "$1" | while IFS= read -r c; do version_at "$c"; done
+count_open() { # name
+  local f n=0
+  while IFS= read -r f; do
+    [ -z "$f" ] || [ "$(field "$f" status)" != open ] || n=$((n + 1))
+  done <<EOF
+$(feedback_files "$1")
+EOF
+  echo "$n"
 }
 
-reopen_feedback() { # note ids...
-  local note="$1" id f
+# Ids of the entries applied in any of the given versions.
+fixed_in() { # name versions...
+  local name="$1" f v
   shift
-  for id in "$@"; do
-    f="$(find "$MSL_HOME/skills" -name "$id.md" -path '*/feedback/*' 2>/dev/null | sed -n 1p || true)"
-    [ -n "$f" ] || continue
-    if grep -q '^status: applied$' "$f"; then
-      set_field "$f" status open
-      set_field "$f" resolution "$note"
-      printf 'reopened %s\n' "$id"
-    fi
+  while IFS= read -r f; do
+    if [ -z "$f" ] || [ "$(field "$f" status)" != applied ]; then continue; fi
+    for v in "$@"; do
+      if [ "$(field "$f" fixed_in)" = "$v" ]; then field "$f" id; break; fi
+    done
+  done <<EOF
+$(feedback_files "$name")
+EOF
+  return 0
+}
+
+mark_applied() { # ids(comma-separated) version
+  local id f
+  for id in $(printf '%s' "$1" | tr ',' ' '); do
+    f="$(feedback_file "$id")"
+    set_field "$f" status applied
+    set_field "$f" fixed_in "$2"
   done
+}
+
+reopen() { # ids...
+  local id f
+  for id in "$@"; do
+    f="$(feedback_file "$id")"
+    set_field "$f" status open
+    set_field "$f" fixed_in
+    printf 'reopened %s\n' "$id"
+  done
+}
+
+# The conversation the feedback came from, when the tool keeps it in a file.
+session_file() { # tool
+  local slug d
+  if [ -n "${CLAUDE_CODE_SESSION_ID:-}" ]; then
+    newest "$HOME"/.claude/projects/*/"$CLAUDE_CODE_SESSION_ID".jsonl
+    return 0
+  fi
+  case "$1" in
+    claude-code)
+      for d in "$PWD" "$(git rev-parse --show-toplevel 2>/dev/null || true)"; do
+        [ -n "$d" ] || continue
+        slug="$(printf '%s' "$d" | sed 's/[^A-Za-z0-9]/-/g')"
+        [ -d "$HOME/.claude/projects/$slug" ] || continue
+        newest "$HOME/.claude/projects/$slug"/*.jsonl
+        return 0
+      done ;;
+    codex)
+      [ -d "$HOME/.codex/sessions" ] || return 0
+      # shellcheck disable=SC2046  # file names have no spaces
+      newest $(find "$HOME/.codex/sessions" -name 'rollout-*.jsonl' 2>/dev/null) ;;
+  esac
+  return 0
 }
 
 # ---------------------------------------------------------------- launcher ---
 # ~/.meta-skill-loop/bin/msl is a tiny launcher, not a copy: it runs the msl inside
 # the installed meta-skill-loop skill, so updating the skill (npx skills update,
-# git pull, install.sh) updates msl too. Rewritten whenever it's out of date.
+# git pull) updates msl too. Rewritten whenever it's out of date.
 
 launcher_text() { # hub skill folder
   cat <<EOF
@@ -449,33 +568,31 @@ ensure_launcher() {
 # --------------------------------------------------------------- commands ---
 
 cmd_init() {
-  if [ -d "$MSL_HOME/.git" ] && [ ! -f "$MSL_HOME/workspace.yaml" ]; then
-    die "$(tilde "$MSL_HOME") was created by an older, unreleased build. Move it aside (mv $(tilde "$MSL_HOME") $(tilde "$MSL_HOME").old) and add your skills again."
-  fi
-  mkdir -p "$MSL_HOME/skills" "$MSL_HOME/bin"
+  mkdir -p "$MSL_HOME/skills" "$MSL_HOME/sessions" "$MSL_HOME/bin"
   if [ ! -f "$MSL_HOME/workspace.yaml" ]; then
-    printf 'id: %s\ncreated: %s\n' "$(new_ws_id)" "$(today)" > "$MSL_HOME/workspace.yaml"
+    printf 'format: %s\nid: %s\ncreated: %s\n' "$MSL_FORMAT" "$(new_ws_id)" "$(today)" > "$MSL_HOME/workspace.yaml"
   fi
   if [ ! -f "$MSL_HOME/README.md" ]; then
     cat > "$MSL_HOME/README.md" <<'EOF'
 # meta-skill-loop workspace
 
 Your feedback and skill versions. Skills themselves live where your tools load them.
-This folder can contain private evidence from your work: never push it anywhere public.
+This folder can contain private work (feedback evidence, copies of conversations):
+never push it anywhere public.
 
-    workspace.yaml                   this workspace's id (used in feedback ids)
+    workspace.yaml                   format version, and this workspace's id (used in feedback ids)
     skills/<name>/skill.yaml         where the skill lives, what kind of source it has
     skills/<name>/git/               its versions: branch "mine" (what runs), "upstream" (as published)
     skills/<name>/feedback/          one file per feedback entry
+    sessions/                        copies of the conversations feedback was logged in
 EOF
   fi
   ensure_launcher
   printf 'workspace: %s (id %s)\n' "$(tilde "$MSL_HOME")" "$(ws_id)"
 }
 
-cmd_scan() {
+list_installed() {
   local found=0 new=0 name path mark rows=""
-  ensure_ws
   while IFS="$TAB" read -r name path; do
     [ -n "$name" ] || continue
     found=$((found + 1))
@@ -486,23 +603,20 @@ cmd_scan() {
 $(all_skills)
 EOF
   printf '%s' "$rows" | LC_ALL=C sort -s -k1,1r -k2,2
-  printf '\n%s skill folders found, %s not managed yet.\n' "$found" "$new"
+  printf '\n%s skill folders found, %s not managed yet. Add one: msl add <name>\n' "$found" "$new"
 }
 
 cmd_add() {
-  local target="" kind="" source="" rev="" name="" dir="" n p top others
+  local target="" kind="" url="" spath="" rev="" name="" dir="" n p top others
   while [ $# -gt 0 ]; do
     case "$1" in
       --kind) kind="${2:?--kind needs a value}"; shift ;;
-      --source) source="${2:?--source needs a value}"; shift ;;
-      --rev) rev="${2:?--rev needs a value}"; shift ;;
       -*) die "add: unknown option $1" ;;
       *) target="$1" ;;
     esac
     shift
   done
-  [ -n "$target" ] || die "usage: msl add <name|path> [--kind local|skills-cli|git] [--source S] [--rev R]"
-  ensure_ws
+  [ -n "$target" ] || { list_installed; return 0; }
 
   if [ -f "$target/SKILL.md" ]; then
     dir="$(abspath "$target")"
@@ -535,28 +649,26 @@ EOF
   [ $# -gt 0 ] || die "no skill named '$name' found in: $(skill_roots | tr '\n' ' ')"
 
   # Who else writes this folder decides how upstream updates are detected.
+  top="$(git -C "$1" rev-parse --show-toplevel 2>/dev/null || true)"
   if [ -z "$kind" ]; then
-    if [ -n "$(lock_info "$name" source)" ]; then
+    if [ -n "$(lock_info "$name" url)" ]; then
       kind="skills-cli"
+    elif [ -n "$top" ] && [ "$top" != "$HOME" ] && [ -n "$(git -C "$1" log -1 --format=%h -- . 2>/dev/null || true)" ]; then
+      kind="git"
     else
-      top="$(git -C "$1" rev-parse --show-toplevel 2>/dev/null || true)"
-      if [ -n "$top" ] && [ "$top" != "$HOME" ] && [ -n "$(git -C "$1" log -1 --format=%h -- . 2>/dev/null || true)" ]; then
-        kind="git"
-      else
-        kind="local"
-      fi
+      kind="local"
     fi
   fi
-  case "$kind" in local|skills-cli|git) ;; *) die "kind must be local, skills-cli, or git" ;; esac
-  if [ -z "$source" ]; then
-    case "$kind" in
-      skills-cli) source="$(lock_info "$name" source)" ;;
-      git) source="$(git -C "$1" config --get remote.origin.url 2>/dev/null || echo "$top") ($(git -C "$1" rev-parse --show-prefix 2>/dev/null | sed 's#/$##'))" ;;
-    esac
-  fi
+  case "$kind" in
+    local) ;;
+    skills-cli) url="$(lock_info "$name" url)"; spath="$(lock_info "$name" path)" ;;
+    git) url="$(git -C "$1" config --get remote.origin.url 2>/dev/null || echo "$top")"
+         spath="$(git -C "$1" rev-parse --show-prefix 2>/dev/null | sed 's#/$##')" ;;
+    *) die "kind must be local, skills-cli, or git" ;;
+  esac
 
   mkdir -p "$(skill_dir "$name")/feedback"
-  write_meta "$name" "$kind" "$source" "$(today)" "$@"
+  write_meta "$name" "$kind" "$url" "$spath" "$(today)" "$@"
   GD="$(skill_dir "$name")/git"
   PRIMARY="$1"
   git init -q --bare "$GD"
@@ -569,14 +681,13 @@ EOF
   if [ "$kind" = local ]; then
     g commit -q --allow-empty -m "v1: added to meta-skill-loop"
   else
-    [ -n "$rev" ] || rev="$(current_rev "$name")"
-    rev="${rev:-unknown}"
-    g commit -q --allow-empty -m "v1: added to meta-skill-loop" -m "Upstream-Rev: $rev"
+    rev="$(current_rev "$name")"
+    g commit -q --allow-empty -m "v1: added to meta-skill-loop" -m "Upstream-Rev: ${rev:-unknown}"
     g branch upstream
   fi
   g tag v1
 
-  printf 'added %s (%s%s) as v1\n' "$name" "$kind" "${source:+, from $source}"
+  printf 'added %s (%s%s) as v1\n' "$name" "$kind" "${url:+, from $(source_of "$name")}"
   for p in "$@"; do printf '  %s\n' "$(tilde "$p")"; done
   while IFS= read -r p; do
     [ -n "$p" ] || continue
@@ -586,14 +697,6 @@ EOF
 $others
 EOF
   return 0
-}
-
-cmd_add_path() { # name path  (internal: register another installed copy)
-  local p
-  use_skill "${1:?usage: msl add-path <name> <path>}"
-  p="$(abspath "${2:?}")" || die "no such folder: $2"
-  meta_paths "$1" | grep -x "$p" >/dev/null && return 0
-  printf '  - %s\n' "$(tilde "$p")" >> "$(meta_file "$1")"
 }
 
 cmd_remove() {
@@ -607,23 +710,27 @@ cmd_remove() {
 }
 
 status_notes() { # name state -> extra lines
-  local name="$1" state="$2" pend
+  local name="$1" state="$2" p
   case "$state" in
-    changed) printf '  %s: uncommitted edits (saved). Keep them as a version (msl keep) or discard (msl undo).\n' "$name" ;;
+    changed) printf '  %s: live edits, not a version yet (saved). Show: msl diff %s. Then msl keep %s -m "<what changed>" or msl discard %s.\n' "$name" "$name" "$name" "$name" ;;
     upstream-update) printf '  %s: a new upstream version replaced your version in the folder. Review it: msl update %s\n' "$name" "$name" ;;
     upstream-live) printf '  %s: the folder holds a plain upstream version; your refinements are not live. Restore them: msl update %s\n' "$name" "$name" ;;
-    copies-differ) printf '  %s: installed copies differ; msl keep %s makes the primary copy win.\n' "$name" "$name" ;;
-    missing) printf '  %s: folder is gone; msl remove %s to stop managing it.\n' "$name" "$name" ;;
+    copies-differ)
+      printf '  %s: installed copies were edited differently:\n' "$name"
+      while IFS= read -r p; do [ -z "$p" ] || printf '      %s\n' "$(tilde "$p")"; done <<EOF
+$(meta_paths "$name")
+EOF
+      printf '    Compare them, then keep one: msl keep %s --from <path> -m "<what changed>" (the other copies get its content).\n' "$name" ;;
+    missing) printf '  %s: folder is gone. Stop managing it: msl remove %s\n' "$name" "$name" ;;
   esac
   if [ "$state" != missing ] && [ "$state" != changed ] && lost_edits; then
-    printf '  %s: your last live edits (saved %s) are no longer in the folder, probably overwritten by an update or reinstall. msl redo %s brings them back.\n' \
-      "$name" "$(g log -1 --format=%cd --date=format:'%Y-%m-%d %H:%M' refs/stash)" "$name"
+    printf '  %s: your last live edits (saved %s) are no longer in the folder, probably overwritten by an update or reinstall. Preview: msl diff %s --saved. Bring back: msl restore %s\n' \
+      "$name" "$(g log -1 --format=%cd --date=format:'%Y-%m-%d %H:%M' refs/stash)" "$name" "$name"
   fi
-  if [ -d "$(skill_dir "$name")/merge" ]; then
-    printf '  %s: an upstream merge is waiting for review (msl diff %s --merge, then msl update %s --apply or --abort).\n' "$name" "$name" "$name"
+  if [ -d "$(merge_dir "$name")" ]; then
+    printf '  %s: an upstream merge is waiting for review: msl diff %s --merge, then msl update %s --apply or --abort\n' "$name" "$name" "$name"
   elif [ "$state" != missing ] && has_upstream && ! g merge-base --is-ancestor upstream mine 2>/dev/null; then
-    pend="$(latest_upstream_rev)"
-    printf '  %s: upstream %s is recorded but not merged into your version yet (msl update %s).\n' "$name" "$pend" "$name"
+    printf '  %s: upstream %s is recorded but not merged into your version yet. See it: msl update %s --check\n' "$name" "$(latest_upstream_rev)" "$name"
   fi
 }
 
@@ -633,7 +740,7 @@ cmd_status() {
   if [ $# -gt 0 ]; then
     is_managed "$1" || { printf "'%s' is not managed; add it with: msl add %s\n" "$1" "$1"; return 1; }
   fi
-  printf '%-24s %-10s %-8s %-5s %-6s %-15s %s\n' SKILL KIND VERSION OPEN TRIAGE STATE "LIVES IN"
+  printf '%-24s %-10s %-8s %-5s %-15s %s\n' SKILL KIND VERSION OPEN STATE "LIVES IN"
   for name in $(managed_names | tr '\n' ' '); do
     [ $# -eq 0 ] || [ "$1" = "$name" ] || continue
     rows=$((rows + 1))
@@ -645,12 +752,12 @@ cmd_status() {
     lives="$(tilde "$PRIMARY")"
     copies="$(meta_paths "$name" | sed 1d | wc -l | tr -d ' ')"
     [ "$copies" = 0 ] || lives="$lives (+$copies)"
-    printf '%-24s %-10s %-8s %-5s %-6s %-15s %s\n' "$name" "$(meta_get "$name" kind)" "$ver" \
-      "$(count_feedback "$name" open)" "$(count_feedback "$name" candidate)" "$state" "$lives"
+    printf '%-24s %-10s %-8s %-5s %-15s %s\n' "$name" "$(meta_get "$name" kind)" "$ver" \
+      "$(count_open "$name")" "$state" "$lives"
     notes="$notes$(status_notes "$name" "$state")
 "
   done
-  [ "$rows" -gt 0 ] || printf '(no managed skills yet: run "msl scan", then "msl add <name>")\n'
+  [ "$rows" -gt 0 ] || printf '(no managed skills yet: "msl add" lists the installed ones)\n'
   notes="$(printf '%s' "$notes" | grep -v '^$' || true)"
   [ -z "$notes" ] || printf '\n%s\n' "$notes"
   if [ $# -eq 0 ]; then
@@ -660,7 +767,7 @@ cmd_status() {
     done <<EOF
 $(all_skills)
 EOF
-    [ "$unmanaged" = 0 ] || printf '\n%s installed skill folder(s) not managed yet: msl scan\n' "$unmanaged"
+    [ "$unmanaged" = 0 ] || printf '\n%s installed skill folder(s) not managed yet: msl add\n' "$unmanaged"
   fi
   return 0
 }
@@ -674,45 +781,59 @@ cmd_feedback() {
     add) feedback_add "$@" ;;
     list) feedback_list "$@" ;;
     mark) feedback_mark "$@" ;;
-    *) die "usage: msl feedback add <name> [options] < body | list <name> [--all] | mark <fb-id> open|declined|applied|resolved-upstream|candidate [-m note]" ;;
+    *) die "usage: msl feedback add <name> -t <title> [options] < body | list <name> [--all] | mark <fb-id> open|applied|declined [--fixed-in vN]" ;;
   esac
 }
 
 feedback_add() {
-  local name="${1:-}" severity="annoying" origin="explicit" confidence="" tool="unknown" project="" status body seq id file ver="" about=""
-  [ -n "$name" ] || die "usage: msl feedback add <name> [--severity nit|annoying|wrong] [--origin explicit|observed] [--confidence high|medium|low] [--tool T] [--project P] [--version vN] < body"
+  local name="${1:-}" title="" severity="P2" tool="" about="" session="" ver seq id file body src
+  [ -n "$name" ] || die "usage: msl feedback add <name> -t <title> [--severity P0|P1|P2|P3|nit] [--tool T] [--version vN] [--session FILE|none] < body"
   shift
   while [ $# -gt 0 ]; do
     case "$1" in
+      -t|--title) title="${2:?}"; shift ;;
       --severity) severity="${2:?}"; shift ;;
-      --origin) origin="${2:?}"; shift ;;
-      --confidence) confidence="${2:?}"; shift ;;
       --tool) tool="${2:?}"; shift ;;
-      --project) project="${2:?}"; shift ;;
       --version) about="${2:?}"; shift ;;
+      --session) session="${2:?}"; shift ;;
       *) die "feedback add: unknown option $1" ;;
     esac
     shift
   done
   use_skill "$name"
-  case "$severity" in nit|annoying|wrong) ;; *) die "severity must be nit, annoying, or wrong" ;; esac
-  case "$origin" in
-    explicit) status="open"; confidence="${confidence:-high}" ;;
-    observed) status="candidate"; confidence="${confidence:-medium}" ;;
-    *) die "origin must be explicit or observed" ;;
-  esac
-  case "$confidence" in high|medium|low) ;; *) die "confidence must be high, medium, or low" ;; esac
-  [ -n "$project" ] || project="$(basename "$(git rev-parse --show-toplevel 2>/dev/null || pwd)")"
+  title="$(printf '%s' "$title" | tr '\n' ' ' | sed 's/^ *//; s/ *$//')"
+  [ -n "$title" ] || die "feedback add needs a one-line title: -t \"<what went wrong>\""
+  case "$severity" in P0|P1|P2|P3|nit) ;; *) die "severity must be P0, P1, P2, P3, or nit" ;; esac
+  if [ -z "$tool" ]; then
+    if [ -n "${CLAUDECODE:-}${CLAUDE_CODE_SESSION_ID:-}" ]; then tool="claude-code"; else tool="unknown"; fi
+  fi
   body="$(cat)"
   [ -n "$(printf '%s' "$body" | tr -d '[:space:]')" ] || die "feedback body is empty (pass it on stdin)"
 
   if [ -n "$about" ]; then
-    g rev-parse -q --verify "refs/tags/$about" >/dev/null || die "no version $about (msl history $name)"
+    require_version "$about" "$name"
     ver="$about"
   else
     ver="$(current_version)"
     [ ! -d "$PRIMARY" ] || ! is_dirty || { ver="$ver+edits"; save_if_changed "$name"; }
   fi
+
+  # Keep a copy of the conversation next to the feedback (tools delete old ones).
+  case "$session" in
+    none) session="" ;;
+    '') src="$(session_file "$tool")" ;;
+    *) [ -f "$session" ] || die "no such session file: $session"; src="$session" ;;
+  esac
+  session=""
+  if [ -n "${src:-}" ]; then
+    mkdir -p "$MSL_HOME/sessions"
+    if cp "$src" "$MSL_HOME/sessions/$(basename "$src")" 2>/dev/null; then
+      session="$(tilde "$MSL_HOME/sessions/$(basename "$src")")"
+    else
+      warn "could not copy the session file $src"
+    fi
+  fi
+
   mkdir -p "$(skill_dir "$name")/feedback"
   seq="$(next_fb_seq)"
   while :; do
@@ -723,57 +844,67 @@ feedback_add() {
   done
   {
     printf -- '---\n'
-    printf 'id: %s\nskill: %s\nversion: %s\nat: %s\n' "$id" "$name" "$ver" "$(now)"
-    printf 'tool: %s\nproject: %s\norigin: %s\nconfidence: %s\n' "$tool" "$project" "$origin" "$confidence"
-    printf 'severity: %s\nstatus: %s\n' "$severity" "$status"
+    printf 'id: %s\nskill: %s\ntitle: %s\nversion: %s\nat: %s\ntool: %s\n' "$id" "$name" "$title" "$ver" "$(now)" "$tool"
+    [ -z "$session" ] || printf 'session: %s\n' "$session"
+    printf 'severity: %s\nstatus: open\n' "$severity"
     printf -- '---\n%s\n' "$body"
   } > "$file"
   printf '%s logged for %s (%s)\n' "$id" "$name" "$ver"
+  if [ -n "$session" ]; then
+    printf 'conversation saved: %s\n' "$session"
+  else
+    printf 'no conversation file to copy for %s; the entry text is the record\n' "$tool"
+  fi
 }
 
 feedback_list() {
-  local name="${1:-}" all=0 f st shown=0
+  local name="${1:-}" all=0 f shown=0
   [ -n "$name" ] || die "usage: msl feedback list <name> [--all]"
   [ "${2:-}" != "--all" ] || all=1
   require_managed "$name"
-  for f in "$(skill_dir "$name")"/feedback/fb-*.md; do
-    [ -f "$f" ] || continue
-    st="$(field "$f" status)"
-    if [ "$all" = 1 ] || [ "$st" = open ] || [ "$st" = candidate ]; then
-      [ "$shown" = 0 ] || printf '\n'
-      cat "$f"
-      shown=$((shown + 1))
-    fi
-  done
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    [ "$all" = 1 ] || [ "$(field "$f" status)" = open ] || continue
+    [ "$shown" = 0 ] || printf '\n'
+    cat "$f"
+    shown=$((shown + 1))
+  done <<EOF
+$(feedback_files "$name")
+EOF
   [ "$shown" -gt 0 ] || printf '(no %sfeedback for %s)\n' "$([ "$all" = 1 ] || echo 'open ')" "$name"
 }
 
 feedback_mark() {
-  local id="${1:-}" status="${2:-}" note="" file
+  local id="${1:-}" status="${2:-}" v="" file
   if [ -z "$id" ] || [ -z "$status" ]; then
-    die "usage: msl feedback mark <fb-id> open|declined|applied|resolved-upstream|candidate [-m note]"
+    die "usage: msl feedback mark <fb-id> open|applied|declined [--fixed-in vN]"
   fi
   shift 2
   while [ $# -gt 0 ]; do
-    case "$1" in -m) note="${2:?}"; shift ;; *) die "mark: unknown option $1" ;; esac
+    case "$1" in --fixed-in) v="${2:?}"; shift ;; *) die "mark: unknown option $1" ;; esac
     shift
   done
-  case "$status" in open|declined|applied|resolved-upstream|candidate) ;; *) die "unknown status '$status'" ;; esac
+  case "$status" in open|applied|declined) ;; *) die "status must be open, applied, or declined" ;; esac
   file="$(feedback_file "$id")"
+  if [ -n "$v" ]; then
+    [ "$status" = applied ] || die "--fixed-in only goes with applied"
+    use_skill "$(field "$file" skill)"
+    require_version "$v" "$(field "$file" skill)"
+  fi
   set_field "$file" status "$status"
-  [ -z "$note" ] || set_field "$file" resolution "$note"
-  printf '%s -> %s\n' "$id" "$status"
+  if [ -n "$v" ]; then set_field "$file" fixed_in "$v"
+  elif [ "$status" != applied ]; then set_field "$file" fixed_in; fi
+  printf '%s -> %s%s\n' "$id" "$status" "${v:+ (fixed in $v)}"
 }
 
-# msl diff <name>                 your current version -> live (uncommitted edits)
+# msl diff <name>                 your current version -> live edits
 # msl diff <name> vA [vB]         between versions (vB defaults to live)
 # msl diff <name> --upstream      latest upstream -> your version (your refinements)
 # msl diff <name> --merge         your version -> the pending upstream merge
-# msl diff <name> --saved         your version -> the last saved live edits
-# msl diff <name> --incoming      what a recorded, not-yet-merged upstream version changes
+# msl diff <name> --saved         your version -> the last saved live edits (what restore brings back)
 cmd_diff() {
   local name="${1:-}" a b wt
-  [ -n "$name" ] || die "usage: msl diff <name> [vA [vB] | --upstream | --incoming | --merge | --saved]"
+  [ -n "$name" ] || die "usage: msl diff <name> [vA [vB] | --upstream | --merge | --saved]"
   use_skill "$name"
   shift
   case "${1:-}" in
@@ -781,102 +912,99 @@ cmd_diff() {
       has_upstream || die "$name has no upstream"
       printf '# upstream %s -> your version %s\n' "$(latest_upstream_rev)" "$(current_version)"
       g diff upstream mine ;;
-    --incoming)
-      has_upstream || die "$name has no upstream"
-      printf '# upstream changes not yet in your version (last merged upstream -> upstream %s)\n' "$(latest_upstream_rev)"
-      g diff "$(g merge-base mine upstream)" upstream ;;
     --saved)
       g rev-parse -q --verify refs/stash >/dev/null || die "no saved edits for $name"
-      printf '# your version %s -> the last saved live edits (what msl redo would bring back)\n' "$(current_version)"
+      printf '# your version %s -> the last saved live edits (what msl restore brings back)\n' "$(current_version)"
       g diff mine refs/stash ;;
     --merge)
-      wt="$(skill_dir "$name")/merge"
+      wt="$(merge_dir "$name")"
       [ -d "$wt" ] || die "no upstream merge in progress for $name"
       printf '# your version %s -> pending merge (live folder unchanged)\n' "$(current_version)"
       git -C "$wt" add -A >/dev/null 2>&1
       git -C "$wt" diff --cached mine ;;
     v[0-9]*)
       a="$1"; b="${2:-}"
-      g rev-parse -q --verify "refs/tags/$a" >/dev/null || die "no version $a (msl history $name)"
+      require_version "$a" "$name"
       if [ -n "$b" ]; then
-        g rev-parse -q --verify "refs/tags/$b" >/dev/null || die "no version $b"
+        require_version "$b" "$name"
         printf '# %s -> %s\n' "$a" "$b"
         g diff "$a" "$b"
       else
         printf '# %s -> live\n' "$a"
         g add -A >/dev/null 2>&1
         g diff --cached "$a"
+        g read-tree mine
       fi ;;
     "")
       save_if_changed "$name"
       printf '# %s -> live (%s)\n' "$(current_version)" "$(tilde "$PRIMARY")"
-      if is_dirty; then g add -A >/dev/null 2>&1; g diff --cached mine; else printf '(no uncommitted edits)\n'; fi ;;
+      if is_dirty; then
+        g add -A >/dev/null 2>&1; g diff --cached mine; g read-tree mine
+      else
+        printf '(no live edits)\n'
+      fi ;;
     *) die "unknown diff option $1" ;;
   esac
 }
 
 # Keep the live edits as the next version.
-cmd_keep() { # name -m summary [--fixes ids]
-  local name="${1:-}" msg="" fixes="" state v id
-  [ -n "$name" ] || die "usage: msl keep <name> -m <summary> [--fixes fb-…,fb-…]"
+cmd_keep() { # name -m summary [--fixes ids] [--from path]
+  local name="${1:-}" msg="" fixes="" from="" state v
+  [ -n "$name" ] || die "usage: msl keep <name> -m <summary> [--fixes fb-…,fb-…] [--from <path>]"
   shift
   while [ $# -gt 0 ]; do
     case "$1" in
       -m) msg="${2:?}"; shift ;;
       --fixes) fixes="${2:?}"; shift ;;
+      --from) from="${2:?}"; shift ;;
       *) die "keep: unknown option $1" ;;
     esac
     shift
   done
   [ -n "$msg" ] || die "keep needs -m <summary>"
   use_skill "$name"
+  if [ -n "$from" ]; then
+    from="$(abspath "$from")" || die "no such folder: $from"
+    meta_paths "$name" | grep -xF "$from" >/dev/null || die "$from is not an installed copy of $name (msl status $name)"
+    set_primary "$name" "$from"
+  fi
   state="$(skill_state "$name")"
   case "$state" in
-    changed|copies-differ) ;;
-    clean) die "nothing to keep: $name has no uncommitted edits" ;;
+    changed) ;;
+    clean) die "nothing to keep: $name has no live edits" ;;
+    copies-differ) die "installed copies of $name were edited differently; choose one: msl keep $name --from <path> -m \"$msg\"" ;;
     upstream-update|upstream-live) die "the folder holds an upstream version, not your edits; run: msl update $name" ;;
     missing) die "skill folder missing: $PRIMARY" ;;
   esac
-  for id in $(printf '%s' "$fixes" | tr ',' ' '); do feedback_file "$id" >/dev/null; done
-  if [ "$state" = copies-differ ] && ! is_dirty; then
-    sync_mirrors "$name"
-    printf 'copied the primary %s over the other installed copies (no new version)\n' "$name"
-    return 0
-  fi
+  check_ids "$fixes"
   autosave
-  if [ -n "$fixes" ]; then
-    v="$(commit_version "$name" "$msg" "Fixes: $(printf '%s' "$fixes" | sed 's/,/, /g')")"
-  else
-    v="$(commit_version "$name" "$msg")"
-  fi
-  for id in $(printf '%s' "$fixes" | tr ',' ' '); do
-    set_field "$(feedback_file "$id")" status applied
-    set_field "$(feedback_file "$id")" resolution "$v"
-  done
+  v="$(commit_version "$name" "$msg")"
+  [ -z "$fixes" ] || mark_applied "$fixes" "$v"
   printf '%s kept for %s%s\n' "$v" "$name" "${fixes:+ (applied $fixes)}"
 }
 
-cmd_undo() {
+cmd_discard() {
   local name="${1:-}"
-  [ -n "$name" ] || die "usage: msl undo <name>"
+  [ -n "$name" ] || die "usage: msl discard <name>"
   use_skill "$name"
-  is_dirty || { printf '%s has no uncommitted edits\n' "$name"; return 0; }
+  is_dirty || [ -n "$COPY_CONFLICT" ] || { printf '%s has no live edits\n' "$name"; return 0; }
   autosave
-  g rev-parse refs/stash > "$GD/msl-discarded"
+  g rev-parse -q --verify refs/stash > "$GD/msl-discarded" || true
   checkout_mine "$name"
-  printf 'discarded the edits to %s; back to %s. They are saved: msl redo %s brings them back.\n' "$name" "$(current_version)" "$name"
+  printf 'discarded the live edits to %s; back to %s. They are saved: msl restore %s brings them back.\n' "$name" "$(current_version)" "$name"
 }
 
-cmd_redo() {
+cmd_restore() {
   local name="${1:-}"
-  [ -n "$name" ] || die "usage: msl redo <name>"
+  [ -n "$name" ] || die "usage: msl restore <name>"
   use_skill "$name"
-  g rev-parse -q --verify refs/stash >/dev/null || die "nothing saved to redo for $name"
-  is_dirty && die "$name has uncommitted edits; keep or undo them first"
+  g rev-parse -q --verify refs/stash >/dev/null || die "nothing saved to restore for $name"
+  is_dirty && die "$name has live edits; keep or discard them first"
   g read-tree mine
   if g stash apply -q >/dev/null 2>&1; then
+    g read-tree mine
     sync_mirrors "$name"
-    printf 'restored the last saved edits to %s (uncommitted: keep or undo)\n' "$name"
+    printf 'restored the last saved edits to %s (live edits: keep or discard)\n' "$name"
   else
     checkout_mine "$name"
     die "the saved edits no longer apply cleanly to $(current_version); nothing was changed"
@@ -884,20 +1012,26 @@ cmd_redo() {
 }
 
 cmd_history() {
-  local name="${1:-}" c v body subject fixes rev count marker dirty=""
+  local name="${1:-}" c v body subject fixes rev count marker f dirty=""
   [ -n "$name" ] || die "usage: msl history <name>"
   use_skill "$name"
-  [ ! -d "$PRIMARY" ] || ! is_dirty || dirty=" (+ uncommitted edits)"
-  printf '%s  (%s%s)\n\n' "$name" "$(meta_get "$name" kind)" "$(s="$(meta_get "$name" source)"; [ -z "$s" ] || printf ', %s' "$s")"
+  [ ! -d "$PRIMARY" ] || ! is_dirty || dirty=" (+ live edits)"
+  printf '%s  (%s%s)\n\n' "$name" "$(meta_get "$name" kind)" "$(s="$(source_of "$name")"; [ -z "$s" ] || printf ', %s' "$s")"
   printf '  %-6s %-10s %-4s %s\n' VER DATE FB CHANGE
   g log mine --first-parent --format='%H' | while IFS= read -r c; do
     v="$(version_at "$c")"
     [ -n "$v" ] || continue
     body="$(g show -s --format=%B "$c")"
     subject="$(printf '%s\n' "$body" | sed -n 1p | sed "s/^$v: //")"
-    fixes="$(printf '%s\n' "$body" | awk '/^Fixes: /{ sub(/^Fixes: /, ""); print }')"
     rev="$(printf '%s\n' "$body" | awk '/^Upstream-Rev: /{ print $2 }' | sed -n 1p)"
-    count="$({ grep -lE "^version: $v(\\+edits)?\$" "$(skill_dir "$name")"/feedback/fb-*.md 2>/dev/null || true; } | wc -l | tr -d ' ')"
+    fixes="$(fixed_in "$name" "$v" | tr '\n' ' ' | sed 's/ $//')"
+    count=0
+    while IFS= read -r f; do
+      [ -n "$f" ] || continue
+      case "$(field "$f" version)" in "$v"|"$v+edits") count=$((count + 1)) ;; esac
+    done <<EOF
+$(feedback_files "$name")
+EOF
     marker=" "
     [ "$c" != "$(g rev-parse mine)" ] || marker="*"
     printf '%s %-6s %-10s %-4s %s%s%s\n' "$marker" "$v" "$(g show -s --format=%cs "$c")" "$count" "$subject" \
@@ -906,94 +1040,105 @@ cmd_history() {
   printf '\n* = live%s. FB = feedback logged against that version.\n' "$dirty"
 }
 
-cmd_rollback() { # name vN [--only] [--yes]
-  local name="${1:-}" target="${2:-}" only=0 yes=0 state v merges ids
-  if [ -z "$name" ] || [ -z "$target" ]; then die "usage: msl rollback <name> <vN> [--only] [--yes]"; fi
+require_clean_for() { # name
+  local state
+  state="$(skill_state "$1")"
+  case "$state" in
+    clean) ;;
+    *) die "$1 is '$state'; keep, discard, or update first (msl status $1)" ;;
+  esac
+}
+
+# Undo one version, keeping everything after it.
+cmd_revert() { # name vN
+  local name="${1:-}" target="${2:-}" v ids
+  if [ -z "$name" ] || [ -z "$target" ]; then die "usage: msl revert <name> <vN>"; fi
+  use_skill "$name"
+  require_version "$target" "$name"
+  g merge-base --is-ancestor "$target" mine || die "$target is not in the history of the current version"
+  require_clean_for "$name"
+  [ "$(g rev-list --parents -n 1 "$target" | wc -w | tr -d ' ')" -le 2 ] \
+    || die "$target took an upstream version; roll back to the version before it instead (msl rollback)"
+  [ "$target" != v1 ] || die "v1 is where the history starts; nothing to revert"
+  if ! g revert --no-commit "$target" >/dev/null 2>&1; then
+    g revert --abort >/dev/null 2>&1 || g read-tree -u --reset mine
+    die "undoing only $target conflicts with later versions; roll back to a version instead (msl rollback), or refine"
+  fi
+  ids="$(fixed_in "$name" "$target" | tr '\n' ' ')"
+  v="$(commit_version "$name" "reverted $target")"
+  # shellcheck disable=SC2086
+  reopen $ids
+  printf '%s: %s undone for %s\n' "$v" "$target" "$name"
+}
+
+# Go back to a version: its content becomes the next version.
+cmd_rollback() { # name vN [--yes]
+  local name="${1:-}" target="${2:-}" yes=0 v merges ids
+  if [ -z "$name" ] || [ -z "$target" ]; then die "usage: msl rollback <name> <vN> [--yes]"; fi
   shift 2
   while [ $# -gt 0 ]; do
-    case "$1" in --only) only=1 ;; --yes) yes=1 ;; *) die "rollback: unknown option $1" ;; esac
+    case "$1" in --yes) yes=1 ;; *) die "rollback: unknown option $1" ;; esac
     shift
   done
   use_skill "$name"
-  g rev-parse -q --verify "refs/tags/$target" >/dev/null || die "no version $target (msl history $name)"
+  require_version "$target" "$name"
   g merge-base --is-ancestor "$target" mine || die "$target is not in the history of the current version"
-  state="$(skill_state "$name")"
-  case "$state" in
-    clean|copies-differ) ;;
-    *) die "$name is '$state'; keep, undo, or update first" ;;
-  esac
-
-  if [ "$only" = 1 ]; then
-    [ "$(g rev-list --parents -n 1 "$target" | wc -w | tr -d ' ')" -le 2 ] \
-      || die "$target merged an upstream version; roll back to the version before it instead"
-    if ! g revert --no-commit "$target" >/dev/null 2>&1; then
-      g revert --abort >/dev/null 2>&1 || g read-tree -u --reset mine
-      die "undoing only $target conflicts with later versions; roll back to a version instead, or refine"
-    fi
-    ids="$({ fixes_in -1 "$target"; applied_by "$name" "$target"; } | sort -u | tr '\n' ' ')"
-    v="$(commit_version "$name" "undid $target" "Reverts: $target")"
-    # shellcheck disable=SC2086
-    reopen_feedback "reopened: $target undone in $v" $ids
-    printf '%s: %s undone for %s\n' "$v" "$target" "$name"
-    return 0
-  fi
-
+  require_clean_for "$name"
   merges="$(g rev-list --merges "$target..mine" | wc -l | tr -d ' ')"
   if [ "$merges" != 0 ] && [ "$yes" = 0 ]; then
-    printf 'Going back to %s also brings back an older upstream text: %s upstream update(s) were merged after it.\n' "$target" "$merges"
-    printf 'To undo just one of your changes instead: msl rollback %s <vN> --only. To go ahead: add --yes.\n' "$name"
+    printf 'Going back to %s also brings back an older upstream text: %s upstream update(s) were taken after it.\n' "$target" "$merges"
+    printf 'To undo just one of your changes instead: msl revert %s <vN>. To go ahead: add --yes.\n' "$name"
     return 2
   fi
   # shellcheck disable=SC2046
-  ids="$({ fixes_in "$target..mine"; applied_by "$name" $(versions_in "$target..mine"); } | sort -u | tr '\n' ' ')"
+  ids="$(fixed_in "$name" $(g log --first-parent --format=%H "$target..mine" | while IFS= read -r c; do version_at "$c"; done) | tr '\n' ' ')"
   g read-tree -u --reset "$target"
-  v="$(commit_version "$name" "rolled back to $target" "Rollback-To: $target")"
+  v="$(commit_version "$name" "rolled back to $target")"
   # shellcheck disable=SC2086
-  reopen_feedback "reopened: rolled back to $target in $v" $ids
+  reopen $ids
   printf '%s: %s now has the content of %s\n' "$v" "$name" "$target"
 }
 
 # Review-gated upstream update. Stages:
 #   1. bring in the new upstream (skills CLI: run it; git repo: already pulled by the user)
-#   2. record it on the upstream branch and put your version back in the live folder
-#   3. no refinements of yours: fast-forward and done. Otherwise merge in a temporary
-#      worktree for review; the live folder stays on your version until --apply.
+#   2. record it on the upstream branch; the live folder keeps your version
+#   3. no refinements of yours: take it as the next version. Otherwise merge in a
+#      temporary worktree for review; the live folder stays on your version until --apply.
 cmd_update() {
-  local name="${1:-}" mode="review" fetch=1 msg="" resolved="" kind state rev wt v
-  [ -n "$name" ] || die "usage: msl update <name> [--no-fetch] [--ff-only] | --apply [-m summary] [--resolved ids] | --abort | --take-upstream"
+  local name="${1:-}" mode="review" fetch=1 msg="" fixes="" kind state rev wt
+  [ -n "$name" ] || die "usage: msl update <name> [--check] [--no-fetch] | --apply [-m summary] [--fixes ids] | --abort | --take-upstream"
   shift
   while [ $# -gt 0 ]; do
     case "$1" in
       --no-fetch) fetch=0 ;;
       --check) mode="check" ;;
-      --ff-only) mode="ff-only" ;;
       --apply) mode="apply" ;;
       --abort) mode="abort" ;;
       --take-upstream) mode="take" ;;
       -m) msg="${2:?}"; shift ;;
-      --resolved) resolved="${2:?}"; shift ;;
+      --fixes) fixes="${2:?}"; shift ;;
       *) die "update: unknown option $1" ;;
     esac
     shift
   done
   use_skill "$name"
   kind="$(meta_get "$name" kind)"
-  wt="$(skill_dir "$name")/merge"
+  wt="$(merge_dir "$name")"
   has_upstream || die "$name is your own skill ($kind): it has no upstream to update from"
 
   case "$mode" in
     abort)
       [ -d "$wt" ] || die "no upstream merge in progress for $name"
-      g worktree remove --force "$wt" >/dev/null 2>&1 || rm -rf "$wt"
-      g worktree prune
+      drop_merge "$name"
       printf 'dropped the pending merge; %s stays on %s (upstream %s still recorded, not merged)\n' "$name" "$(current_version)" "$(latest_upstream_rev)"
       return 0 ;;
-    apply) update_apply "$name" "$wt" "$msg" "$resolved"; return 0 ;;
+    apply) update_apply "$name" "$msg" "$fixes"; return 0 ;;
   esac
   [ ! -d "$wt" ] || die "a merge is already waiting for review: msl diff $name --merge, then msl update $name --apply or --abort"
 
   state="$(skill_state "$name")"
-  [ "$state" != changed ] || { autosave; die "$name has uncommitted edits (saved); keep or undo them before updating"; }
+  [ "$state" != changed ] || { autosave; die "$name has live edits (saved); keep or discard them before updating"; }
+  [ "$state" != copies-differ ] || die "installed copies of $name were edited differently; resolve that first (msl status $name)"
   [ "$state" != missing ] || die "skill folder missing: $PRIMARY"
 
   # 1. Bring in the new upstream.
@@ -1002,6 +1147,7 @@ cmd_update() {
     printf 'fetching the latest %s with the skills CLI...\n' "$name"
     DO_NOT_TRACK=1 DISABLE_TELEMETRY=1 npx -y skills update "$name" -g -y >/dev/null 2>&1 \
       || warn "skills CLI update reported a problem; continuing with what is on disk"
+    use_skill "$name"
     state="$(skill_state "$name")"
   fi
 
@@ -1016,41 +1162,34 @@ cmd_update() {
     [ "$kind" = git ] || checkout_mine "$name"
   fi
 
-  # 3. Merge (or, with --check, only report).
-  if [ "$mode" = check ]; then
-    if g merge-base --is-ancestor upstream mine; then
-      printf '%s is up to date (%s, upstream %s)\n' "$name" "$(current_version)" "$(latest_upstream_rev)"
-    else
-      printf 'upstream %s is available for %s and not in your version yet (%s). Nothing was changed.\n' "$(latest_upstream_rev)" "$name" "$(current_version)"
-      printf 'See what upstream changed: msl diff %s --incoming. To take it: msl update %s' "$name" "$name"
-      if has_refinements; then printf ' (merged with your refinements for review first)\n'; else printf ' (you have no refinements, so it applies directly)\n'; fi
-    fi
-    return 0
-  fi
   if g merge-base --is-ancestor upstream mine; then
     printf '%s is up to date (%s, upstream %s)\n' "$name" "$(current_version)" "$(latest_upstream_rev)"
     return 0
   fi
   rev="$(latest_upstream_rev)"
+
+  # 3. Report (--check), take, or merge for review.
+  if [ "$mode" = check ]; then
+    printf 'upstream %s is available for %s and not in your version yet (%s). Nothing was changed.\n' "$rev" "$name" "$(current_version)"
+    printf 'To take it: msl update %s' "$name"
+    if has_refinements; then printf ' (merged with your refinements for review first)\n'; else printf ' (you have no refinements, so it applies directly)\n'; fi
+    printf '\n# what upstream changed (last upstream in your version -> upstream %s)\n' "$rev"
+    g diff "$(g merge-base mine upstream)" upstream
+    return 0
+  fi
   if [ "$mode" = take ]; then
-    update_take "$name" "$rev"
+    drop_merge "$name"
+    printf '%s: %s now runs upstream %s as published; earlier versions stay in msl history\n' \
+      "$(take_upstream "$name" "took upstream $rev as-is (local refinements dropped)")" "$name" "$rev"
     return 0
   fi
   if ! has_refinements; then
-    # Nothing of yours to merge: take the new upstream as the next version.
-    v="$(next_version)"
-    g update-ref refs/heads/mine "$(g commit-tree 'upstream^{tree}' -p mine -p upstream -m "$v: took upstream $rev" -m "Upstream-Rev: $rev")"
-    g tag "$v"
-    checkout_mine "$name"
-    printf '%s: %s updated to upstream %s (you had no refinements to merge)\n' "$v" "$name" "$rev"
-    return 0
-  fi
-  if [ "$mode" = ff-only ]; then
-    printf '%s has your refinements; review the upstream %s merge with: msl update %s\n' "$name" "$rev" "$name"
+    printf '%s: %s updated to upstream %s (you had no refinements to merge)\n' \
+      "$(take_upstream "$name" "took upstream $rev")" "$name" "$rev"
     return 0
   fi
   g worktree add -q --detach "$wt" mine >/dev/null 2>&1
-  if git -C "$wt" -c user.name=meta-skill-loop -c user.email=msl@localhost merge -q --no-ff --no-commit upstream >/dev/null 2>&1; then
+  if gw "$wt" merge -q --no-ff --no-commit upstream >/dev/null 2>&1; then
     printf 'Upstream %s merged with your version cleanly, waiting for review. The live skill is unchanged.\n' "$rev"
   else
     printf 'Upstream %s merged with your version, with conflicts in:\n' "$rev"
@@ -1059,55 +1198,27 @@ cmd_update() {
   fi
   printf 'Review:  msl diff %s --merge        (what your skill would become)\n' "$name"
   printf '         msl diff %s --upstream     (your refinements before this update)\n' "$name"
-  printf 'Then:    msl update %s --apply [-m summary] [--resolved fb-…]   or   msl update %s --abort\n' "$name" "$name"
+  printf 'Then:    msl update %s --apply [-m summary] [--fixes fb-…]   or   msl update %s --abort\n' "$name" "$name"
 }
 
-update_apply() { # name wt msg resolved
-  local name="$1" wt="$2" msg="$3" resolved="$4" rev v c id trailers
+update_apply() { # name msg fixes
+  local name="$1" msg="$2" fixes="$3" wt rev v c
+  wt="$(merge_dir "$name")"
   [ -d "$wt" ] || die "no upstream merge in progress for $name"
   if grep -rlE '^(<<<<<<<|>>>>>>>)( |$)' "$wt" --exclude-dir=.git >/dev/null 2>&1; then
     die "unresolved conflict markers remain in $(tilde "$wt"); resolve them first"
   fi
-  for id in $(printf '%s' "$resolved" | tr ',' ' '); do feedback_file "$id" >/dev/null; done
+  check_ids "$fixes"
   rev="$(latest_upstream_rev)"
   v="$(next_version)"
-  trailers="Upstream-Rev: $rev"
-  [ -z "$resolved" ] || trailers="$trailers
-Resolved-Upstream: $(printf '%s' "$resolved" | sed 's/,/, /g')"
-  git -C "$wt" add -A >/dev/null 2>&1
-  git -C "$wt" -c user.name=meta-skill-loop -c user.email=msl@localhost \
-    commit -q --allow-empty -m "$v: took upstream $rev${msg:+; $msg}" -m "$trailers"
+  gw "$wt" add -A >/dev/null 2>&1
+  gw "$wt" commit -q --allow-empty -m "$v: took upstream $rev${msg:+; $msg}" -m "Upstream-Rev: $rev"
   c="$(git -C "$wt" rev-parse HEAD)"
-  g worktree remove --force "$wt" >/dev/null 2>&1 || rm -rf "$wt"
-  g worktree prune
+  drop_merge "$name"
   g update-ref refs/heads/mine "$c"
-  g tag "$v"
-  checkout_mine "$name"
-  for id in $(printf '%s' "$resolved" | tr ',' ' '); do
-    set_field "$(feedback_file "$id")" status resolved-upstream
-    set_field "$(feedback_file "$id")" resolution "$v"
-  done
+  tag_version "$name" "$v" >/dev/null
+  [ -z "$fixes" ] || mark_applied "$fixes" "$v"
   printf '%s: %s now runs upstream %s with your refinements\n' "$v" "$name" "$rev"
-}
-
-update_take() { # name rev: take upstream as-is, dropping refinements (they stay in history)
-  local name="$1" rev="$2" v wt
-  wt="$(skill_dir "$name")/merge"
-  if [ -d "$wt" ]; then g worktree remove --force "$wt" >/dev/null 2>&1 || rm -rf "$wt"; g worktree prune; fi
-  v="$(next_version)"
-  g update-ref refs/heads/mine "$(g commit-tree 'upstream^{tree}' -p mine -p upstream \
-    -m "$v: took upstream $rev as-is (local refinements dropped)" -m "Upstream-Rev: $rev")"
-  g tag "$v"
-  checkout_mine "$name"
-  printf '%s: %s now runs upstream %s as published; earlier versions stay in msl history\n' "$v" "$name" "$rev"
-}
-
-cmd_import_upstream() { # name dir [rev]  (internal: record a folder as a new upstream version)
-  use_skill "${1:?usage: msl import-upstream <name> <dir> [rev]}"
-  has_upstream || die "$1 has no upstream"
-  [ -f "${2:?}/SKILL.md" ] || die "no SKILL.md in $2"
-  if import_upstream "$2" "${3:-unknown}"; then printf 'recorded upstream %s for %s\n' "${3:-unknown}" "$1"; fi
-  return 0
 }
 
 cmd_git() { use_skill "${1:?usage: msl git <name> <git args…>}"; shift; g "$@"; }
@@ -1116,23 +1227,23 @@ usage() {
   cat <<EOF
 msl $MSL_VERSION: meta-skill-loop bookkeeping (data in $(tilde "$MSL_HOME"))
 
-  msl status [name]                  managed skills, versions, open feedback, state
-  msl scan                           installed skills; which are managed
-  msl add <name|path>                start managing a skill (the skill is not modified)
+  msl status [name]                  managed skills, versions, open feedback, what needs attention
+  msl add [name|path] [--kind K]     start managing a skill (not modified); no name: list installed skills
   msl remove <name>                  stop managing it (data archived; skill untouched)
 
-  msl feedback add <name> [--severity nit|annoying|wrong] [--tool T] [--project P]
-                   [--version vN] [--origin explicit|observed] [--confidence C] < body
+  msl feedback add <name> -t <title> [--severity P0|P1|P2|P3|nit] [--tool T] [--version vN]
+                   [--session FILE|none] < body
   msl feedback list <name> [--all]
-  msl feedback mark <fb-id> open|declined|applied|resolved-upstream|candidate [-m note]
+  msl feedback mark <fb-id> open|applied|declined [--fixed-in vN]
 
-  msl diff <name> [vA [vB] | --upstream | --incoming | --merge | --saved]
-  msl keep <name> -m <summary> [--fixes fb-…,fb-…]   live edits become the next version
-  msl undo <name>                    discard live edits (saved; msl redo brings them back)
-  msl redo <name>
+  msl diff <name> [vA [vB] | --upstream | --merge | --saved]
+  msl keep <name> -m <summary> [--fixes fb-…,fb-…] [--from <path>]   live edits become the next version
+  msl discard <name>                 throw away live edits (saved: msl restore brings them back)
+  msl restore <name>
   msl history <name>
-  msl rollback <name> <vN> [--only] [--yes]
-  msl update <name> [--check] [--no-fetch] [--ff-only] | --apply [-m s] [--resolved ids] | --abort | --take-upstream
+  msl revert <name> <vN>             undo one version, keep the rest
+  msl rollback <name> <vN> [--yes]   go back to a version
+  msl update <name> [--check] [--no-fetch] | --apply [-m s] [--fixes ids] | --abort | --take-upstream
 
   msl path <name> | msl git <name> <git args…> | msl init | msl version
 EOF
@@ -1142,14 +1253,13 @@ main() {
   local cmd="${1:-help}"
   [ $# -eq 0 ] || shift
   case "$cmd" in
-    init|scan|add|remove|status|path|feedback|diff|keep|undo|redo|history|rollback|update|git) ;;
-    import-upstream|add-path|version|--version|help|-h|--help) ;;
+    init|add|remove|status|path|feedback|diff|keep|discard|restore|history|revert|rollback|update|git) ;;
+    version|--version|help|-h|--help) ;;
     *) usage >&2; exit 2 ;;
   esac
   case "$cmd" in init|version|--version|help|-h|--help) ;; *) ensure_ws; ensure_launcher ;; esac
   case "$cmd" in
     init) cmd_init "$@" ;;
-    scan) cmd_scan "$@" ;;
     add) cmd_add "$@" ;;
     remove) cmd_remove "$@" ;;
     status) cmd_status "$@" ;;
@@ -1157,14 +1267,13 @@ main() {
     feedback) cmd_feedback "$@" ;;
     diff) cmd_diff "$@" ;;
     keep) cmd_keep "$@" ;;
-    undo) cmd_undo "$@" ;;
-    redo) cmd_redo "$@" ;;
+    discard) cmd_discard "$@" ;;
+    restore) cmd_restore "$@" ;;
     history) cmd_history "$@" ;;
+    revert) cmd_revert "$@" ;;
     rollback) cmd_rollback "$@" ;;
     update) cmd_update "$@" ;;
     git) cmd_git "$@" ;;
-    import-upstream) cmd_import_upstream "$@" ;;
-    add-path) cmd_add_path "$@" ;;
     version|--version) echo "$MSL_VERSION" ;;
     help|-h|--help) usage ;;
   esac

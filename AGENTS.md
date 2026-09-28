@@ -6,7 +6,7 @@ This repo is the public source of meta-skill-loop: three agent skills plus `msl`
 
 - `skills/<name>/SKILL.md`: the skills. Frontmatter is **only** `name` and `description`, the subset Cursor, Codex, and Claude Code all honor. No tool-specific syntax (no `!command` injection, no `${CLAUDE_*}` variables, no hooks).
 - `skills/meta-skill-loop/scripts/msl`: all mechanical work (per-skill git repos in the workspace; see design.md §5). It ships inside the hub skill, so the package is self-contained; `msl init` writes `~/.meta-skill-loop/bin/msl`, a launcher into the installed skill, which is the path the skills use.
-- `install.sh`: fallback for machines without Node; the primary install is `npx skills add SoulEvill/meta-skill-loop -g --copy` (copy, never symlink: Cursor's symlink discovery is unreliable).
+- Install is `npx skills add SoulEvill/meta-skill-loop -g --copy` (copy, never symlink: Cursor's symlink discovery is unreliable). There is no installer script: first use of any skill runs `msl init`.
 - `tests/run.sh`: end-to-end tests in a throwaway `$HOME`. `tests/lint-skills.sh`: skills stay portable. `tests/package.sh`: real `skills` CLI install. `tests/agent/run.sh <agent>`: real-agent tests (manual; needs a key).
 - `.github/workflows/`: `ci` (every push/PR), `release` (on `v*` tags), `agent-tests` (manual, owner only). See `docs/maintaining.md`.
 
@@ -17,4 +17,4 @@ This repo is the public source of meta-skill-loop: three agent skills plus `msl`
 - Under `set -euo pipefail`, guard pipelines that can legitimately find nothing (`grep … || true`). Never end a pipe in something that exits early: no `head` (use `sed -n 1p`) and no `grep -q` (use `grep … >/dev/null`), or the writer gets SIGPIPE and the check fails at random.
 - Never move or delete a user's skill folder. meta-skill-loop manages skills in place and never edits one except to apply a change the user approved (refine, keep, rollback, update).
 - The skill texts are the product. Keep them short and imperative, and make them work in every tool.
-- Every behavior change gets a test in `tests/run.sh`. Before pushing, run `tests/run.sh` (check its exit status, not a piped tail), `tests/lint-skills.sh`, `shellcheck install.sh tests/*.sh tests/agent/*.sh skills/meta-skill-loop/scripts/msl`, and, if you can, `TEST_BASH=/bin/bash tests/run.sh` on macOS. Skill texts changed? Also run `tests/agent/run.sh claude-code` if you have a key.
+- Every behavior change gets a test in `tests/run.sh`. Before pushing, run `tests/run.sh` (check its exit status, not a piped tail), `tests/lint-skills.sh`, `shellcheck tests/*.sh tests/agent/*.sh skills/meta-skill-loop/scripts/msl`, and, if you can, `TEST_BASH=/bin/bash tests/run.sh` on macOS. Skill texts changed? Also run `tests/agent/run.sh claude-code` if you have a key.

@@ -21,7 +21,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: shellcheck
-        run: shellcheck -s bash install.sh tests/*.sh tests/agent/*.sh skills/meta-skill-loop/scripts/msl
+        run: shellcheck -s bash tests/*.sh tests/agent/*.sh skills/meta-skill-loop/scripts/msl
       - name: skills are portable (Agent Skills format)
         run: bash tests/lint-skills.sh
 
