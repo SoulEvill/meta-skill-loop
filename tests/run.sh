@@ -104,15 +104,16 @@ mkdir -p "$HOME/.claude/projects/some-project"
 echo '{"turn":"record this"}' > "$HOME/.claude/projects/some-project/cur-id.jsonl"
 sleep 1; echo '{"turn":"another chat"}' > "$HOME/.claude/projects/some-project/other-chat.jsonl"
 out="$(echo x | CLAUDE_CODE_SESSION_ID=cur-id msl feedback add grill-me -t s1)"
-has "claude code: the current conversation is copied" "$out" "conversation saved: ~/.meta-skill-loop/sessions/cur-id.jsonl"
-check "the copy is kept in the workspace" grep -q 'record this' "$HOME/.meta-skill-loop/sessions/cur-id.jsonl"
-check "the entry points to the copy" grep -q '^session: ~/.meta-skill-loop/sessions/cur-id.jsonl$' "$HOME/.meta-skill-loop/skills/grill-me/feedback/$(fb 003).md"
+has "claude code: the current conversation is copied" "$out" "-cur-id.jsonl"
+copied() { find "$HOME/.meta-skill-loop/sessions" -name "*-$1" 2>/dev/null; }
+check "the copy is kept in the workspace" grep -q 'record this' "$(copied cur-id.jsonl)"
+check "the entry points to the copy" grep -q '^session: ~/.meta-skill-loop/sessions/[0-9a-f]*-cur-id.jsonl$' "$HOME/.meta-skill-loop/skills/grill-me/feedback/$(fb 003).md"
 check "inside claude code the tool is detected" grep -q '^tool: claude-code$' "$HOME/.meta-skill-loop/skills/grill-me/feedback/$(fb 003).md"
-check "a newer, unrelated conversation is not taken" test ! -e "$HOME/.meta-skill-loop/sessions/other-chat.jsonl"
+check "a newer, unrelated conversation is not taken" test -z "$(copied other-chat.jsonl)"
 mkdir -p "$HOME/.codex/sessions/2026/09/28" && echo '{"turn":"codex chat"}' > "$HOME/.codex/sessions/2026/09/28/rollout-1.jsonl"
 has "without a known current session nothing is guessed" "$(echo x | msl feedback add grill-me -t s2 --tool codex)" "no conversation copied"
-check "so no unrelated conversation is stored" test ! -e "$HOME/.meta-skill-loop/sessions/rollout-1.jsonl"
-has "an explicit --session file is copied" "$(echo x | msl feedback add grill-me -t s3 --tool codex --session "$HOME/.codex/sessions/2026/09/28/rollout-1.jsonl")" "sessions/rollout-1.jsonl"
+check "so no unrelated conversation is stored" test -z "$(copied rollout-1.jsonl)"
+has "an explicit --session file is copied" "$(echo x | msl feedback add grill-me -t s3 --tool codex --session "$HOME/.codex/sessions/2026/09/28/rollout-1.jsonl")" "-rollout-1.jsonl"
 has "cursor: says nothing was copied" "$(echo x | msl feedback add grill-me -t s4 --tool cursor)" "no conversation copied"
 lacks "--session none skips the copy" "$(echo x | CLAUDE_CODE_SESSION_ID=cur-id msl feedback add grill-me -t s5 --session none)" "conversation saved"
 for n in 003 004 005 006 007; do msl feedback mark "$(fb $n)" declined >/dev/null; done
@@ -433,6 +434,51 @@ skill "$HOME/team3/.cursor/skills/shared-name" shared-name "The team's own."
 git -C "$HOME/team3" add -A && git -C "$HOME/team3" -c user.name=t -c user.email=t@t commit -qm init
 has "a project skill sharing a name with a CLI install isn't taken for it" "$(msl add "$HOME/team3/.cursor/skills/shared-name")" "added shared-name (local)"
 
+echo "review round 2"
+# An installer release that changes only a dotfile is acknowledged, so a later edit is yours.
+skill "$HOME/.agents/skills/dotrel" dotrel "Base."
+lock dotrel 111111111111
+msl add dotrel >/dev/null
+echo "meta" > "$HOME/.agents/skills/dotrel/.skill-meta"
+lock dotrel 222222222222
+has "a dotfile-only release leaves the skill clean" "$(state_of dotrel)" "clean"
+echo "My edit." >> "$HOME/.agents/skills/dotrel/SKILL.md"
+has "a later edit is a live edit, not an installer update" "$(state_of dotrel)" "changed"
+msl update dotrel --no-fetch --check >/dev/null 2>&1 || true
+has "and checking for updates never takes it away" "$(cat "$HOME/.agents/skills/dotrel/SKILL.md")" "My edit."
+has "it can be kept" "$(msl keep dotrel -m mine)" "v2 kept"
+
+# The skill's own .gitignore doesn't change what msl versions.
+skill "$HOME/.agents/skills/ignored" ignored
+echo "notes" > "$HOME/.agents/skills/ignored/notes.txt"
+msl add ignored >/dev/null
+printf 'notes.txt\ndraft.md\n' > "$HOME/.agents/skills/ignored/.gitignore"
+has "a new .gitignore doesn't make tracked files look deleted" "$(state_of ignored)" "clean"
+lacks "and the diff shows nothing" "$(msl diff ignored)" "notes.txt"
+echo "draft" > "$HOME/.agents/skills/ignored/draft.md"
+has "a file the skill's .gitignore lists is still a skill file" "$(state_of ignored)" "changed"
+msl keep ignored -m draft >/dev/null
+has "keep leaves the skill clean" "$(state_of ignored)" "clean"
+has "and the version has the file" "$(msl git ignored show mine:draft.md)" "draft"
+echo "more" >> "$HOME/.agents/skills/ignored/notes.txt"; msl discard ignored >/dev/null
+has "discard leaves it clean too" "$(state_of ignored)" "clean"
+
+# Two conversation files with the same name never overwrite each other's copy.
+mkdir -p "$HOME/chats/a" "$HOME/chats/b"
+echo '{"chat":"A"}' > "$HOME/chats/a/session.jsonl"; echo '{"chat":"B"}' > "$HOME/chats/b/session.jsonl"
+sa="$(echo x | msl feedback add ignored -t a --session "$HOME/chats/a/session.jsonl" | awk 'NR == 1 { print $1 }')"
+echo x | msl feedback add ignored -t b --session "$HOME/chats/b/session.jsonl" >/dev/null
+check "each feedback keeps its own conversation" grep -q '"A"' "$(msl feedback list ignored --all | awk -v id="$sa" '$0 == "id: " id { f = 1 } f && /^session: / { print $2; exit }' | sed "s#^~#$HOME#")"
+
+# Taking upstream as published is a valid decision while a merge waits for review.
+msl update pending --no-fetch >/dev/null 2>&1 || true
+skill "$HOME/.agents/skills/pending" pending "Line one.
+
+Line two, upstream again."
+lock pending 444444444444
+msl update pending --no-fetch >/dev/null
+has "--take-upstream works with a merge waiting" "$(msl update pending --take-upstream --no-fetch)" "as published"
+
 echo "remove"
 skill "$HOME/.agents/skills/tmp-skill" tmp-skill
 orig="$(cat "$HOME/.agents/skills/tmp-skill/SKILL.md")"
@@ -441,7 +487,7 @@ msl remove tmp-skill >/dev/null
 check "remove leaves the skill untouched" test "$(cat "$HOME/.agents/skills/tmp-skill/SKILL.md")" = "$orig"
 has "remove archives the data" "$(ls "$HOME/.meta-skill-loop/archive")" "tmp-skill"
 check "remove stops managing it" fails msl status tmp-skill
-check "remove keeps the conversation copies" test -f "$HOME/.meta-skill-loop/sessions/cur-id.jsonl"
+check "remove keeps the conversation copies" test -n "$(copied cur-id.jsonl)"
 
 echo "launcher follows the installed skill"
 hub="$HOME/.agents/skills/meta-skill-loop/scripts/msl"

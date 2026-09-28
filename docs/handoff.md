@@ -13,7 +13,7 @@ _Last updated: 2026-09-28, after simplifying the core following the first indepe
   - four states: `clean`, `changed`, `upstream`, `missing`;
   - one workspace lock: one msl command at a time.
 - **Formats** (settled before release): feedback entries (title, version, tool, conversation copy, severity `P0`–`P3`/`nit`, status `open`/`applied`/`declined`, `fixed_in`; free-form body), `workspace.yaml` with `format: 1` and a 6-character id, `skill.yaml` with `path` and `links`.
-- **Tests:** `tests/run.sh` (165, bash 5 and 3.2, always with a space in `$HOME`, `TZ=UTC`), skills lint, a real `skills` CLI install, and a real Claude Code agent test. CI runs the first three on Ubuntu and macOS.
+- **Tests:** `tests/run.sh` (177, bash 5 and 3.2, always with a space in `$HOME`, `TZ=UTC`), skills lint, a real `skills` CLI install, and a real Claude Code agent test. CI runs the first three on Ubuntu and macOS.
 
 ## Why the core changed (after review round 1)
 

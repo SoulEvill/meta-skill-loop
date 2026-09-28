@@ -60,8 +60,13 @@ untilde() {
   esac
 }
 
-# Files that make up a skill: everything except dotfiles and dot-directories.
+# Files that make up a skill: everything except dotfiles and dot-directories. msl
+# versions exactly these, whatever the folder's own .gitignore says.
 skill_files() { (cd "$1" && find -L . -type f ! -path '*/.*' | LC_ALL=C sort); }
+
+# Stage exactly those files, with the git command given ("g", "g --work-tree=DIR",
+# "gw DIR"). The one place that decides what a snapshot or a version contains.
+stage() { "$@" add -A -f -- ':(top)' ':(top,exclude,glob)**/.*' ':(top,exclude,glob)**/.*/**' >/dev/null 2>&1; }
 
 # Content fingerprint of a folder, before it has a version history.
 dir_hash() {
@@ -287,7 +292,7 @@ has_upstream() { g show-ref -q --verify refs/heads/upstream; }
 tree_of_dir() {
   local idx="$GD/msl-scratch-index.$$" t
   rm -f "$idx"
-  GIT_INDEX_FILE="$idx" g --work-tree="$1" add -A >/dev/null 2>&1
+  GIT_INDEX_FILE="$idx" stage g --work-tree="$1"
   t="$(GIT_INDEX_FILE="$idx" g --work-tree="$1" write-tree)"
   rm -f "$idx"
   printf '%s\n' "$t"
@@ -301,6 +306,12 @@ is_dirty() { [ "$(live_tree)" != "$(mine_tree)" ]; }
 upstream_revs() { has_upstream || return 0; g log upstream --format=%B | awk '/^Upstream-Rev: /{ print $2 }'; }
 upstream_trees() { has_upstream || return 0; g log upstream --format=%T; }
 latest_upstream_rev() { upstream_revs | sed -n 1p; }
+
+# The installer revision msl has last seen for a skills-cli skill. Every revision is
+# acknowledged when seen, even one that changed nothing msl tracks (only a dotfile),
+# so a later edit of yours is never mistaken for an installer update.
+seen_rev() { g config --get msl.seenrev 2>/dev/null || latest_upstream_rev; }
+see_rev() { [ -z "${1:-}" ] || g config msl.seenrev "$1"; }
 
 # The revision the skill's source reports right now (empty if unknown).
 current_rev() { # name
@@ -327,11 +338,14 @@ skill_state() { # name
   local t rev
   [ -d "$PRIMARY" ] || { echo missing; return 0; }
   t="$(live_tree)"
-  [ "$t" != "$(mine_tree)" ] || { echo clean; return 0; }
+  if has_upstream; then rev="$(current_rev "$1")"; else rev=""; fi
+  if [ "$t" = "$(mine_tree)" ]; then
+    if [ -n "$rev" ] && [ "$rev" != "$(seen_rev)" ]; then see_rev "$rev"; fi
+    echo clean; return 0
+  fi
   if has_upstream; then
     if upstream_trees | grep -x "$t" >/dev/null; then echo upstream; return 0; fi
-    rev="$(current_rev "$1")"
-    if [ -n "$rev" ] && ! upstream_revs | grep -x "$rev" >/dev/null; then echo upstream; return 0; fi
+    if [ -n "$rev" ] && [ "$rev" != "$(seen_rev)" ]; then echo upstream; return 0; fi
   fi
   echo changed
 }
@@ -342,7 +356,7 @@ autosave() {
   t="$(live_tree)"
   last="$(g rev-parse -q --verify 'refs/stash^{tree}' 2>/dev/null || true)"
   [ "$t" != "$last" ] || return 0
-  g add -A >/dev/null 2>&1
+  stage g
   s="$(g stash create "msl autosave $(now)" 2>/dev/null || true)"
   [ -z "$s" ] || g stash store -m "msl autosave $(now)" "$s" >/dev/null
   g read-tree mine  # leave the index on the current version; only the folder holds edits
@@ -370,7 +384,7 @@ has_refinements() {
 
 # Put `mine` into the live folder.
 checkout_mine() {
-  g add -A >/dev/null 2>&1  # track new files too, so the reset removes them
+  stage g  # track new files too, so the reset removes them
   g read-tree -u --reset mine
 }
 
@@ -387,7 +401,7 @@ tag_version() { # name v
 commit_version() { # name message
   local v
   v="$(next_version)"
-  g add -A >/dev/null 2>&1
+  stage g
   g commit -q --allow-empty -m "$v: $2" || { g read-tree mine; return 1; }
   tag_version "$1" "$v"
 }
@@ -418,7 +432,7 @@ record_upstream() { # name
   local rev
   rev="$(current_rev "$1")"
   if import_upstream "$PRIMARY" "${rev:-unknown}"; then printf 'recorded upstream %s\n' "${rev:-unknown}"; fi
-  return 0
+  see_rev "$rev"
 }
 
 merge_dir() { printf '%s\n' "$(skill_dir "$1")/merge"; }
@@ -671,13 +685,12 @@ EOF
   g config core.bare false
   g config core.worktree "$PRIMARY"
   g symbolic-ref HEAD refs/heads/mine
-  mkdir -p "$GD/info"
-  printf '.*\n' >> "$GD/info/exclude"
-  g add -A >/dev/null 2>&1
+  stage g
   if [ "$kind" = skills-cli ]; then
     rev="$(current_rev "$name")"
     g commit -q --allow-empty -m "v1: added to meta-skill-loop" -m "Upstream-Rev: ${rev:-unknown}"
     g branch upstream
+    see_rev "$rev"
   else
     g commit -q --allow-empty -m "v1: added to meta-skill-loop"
   fi
@@ -807,7 +820,7 @@ cmd_feedback() {
 }
 
 feedback_add() {
-  local name="${1:-}" title="" severity="P2" tool="" about="" session="" ver id file body src
+  local name="${1:-}" title="" severity="P2" tool="" about="" session="" ver id file body src dest
   [ -n "$name" ] || die "usage: msl feedback add <name> -t <title> [--severity P0|P1|P2|P3|nit] [--tool T] [--version vN] [--session FILE|none] < body"
   shift
   while [ $# -gt 0 ]; do
@@ -847,9 +860,12 @@ feedback_add() {
   esac
   session=""
   if [ -n "${src:-}" ]; then
+    # Named by where it came from: the same conversation refreshes its copy, and two
+    # files that share a name never overwrite each other.
+    dest="$MSL_HOME/sessions/$(printf '%s' "$(abspath "$(dirname "$src")")/$(basename "$src")" | sha256 | cut -c1-8)-$(basename "$src")"
     mkdir -p "$MSL_HOME/sessions"
-    if cp "$src" "$MSL_HOME/sessions/$(basename "$src")" 2>/dev/null; then
-      session="$(tilde "$MSL_HOME/sessions/$(basename "$src")")"
+    if cp "$src" "$dest" 2>/dev/null; then
+      session="$(tilde "$dest")"
     else
       warn "could not copy the session file $src"
     fi
@@ -936,7 +952,7 @@ cmd_diff() {
       wt="$(merge_dir "$name")"
       [ -d "$wt" ] || die "no upstream merge in progress for $name"
       printf '# your version %s -> pending merge (live folder unchanged)\n' "$(current_version)"
-      git -C "$wt" add -A >/dev/null 2>&1
+      stage git -C "$wt"
       git -C "$wt" diff --cached mine ;;
     v[0-9]*)
       a="$1"; b="${2:-}"
@@ -1172,7 +1188,7 @@ cmd_update() {
       return 0 ;;
     apply) update_apply "$name" "$msg" "$fixes"; return 0 ;;
   esac
-  [ ! -d "$wt" ] || die "a merge is already waiting for review: msl diff $name --merge, then msl update $name --apply or --abort"
+  [ "$mode" = take ] || [ ! -d "$wt" ] || die "a merge is already waiting for review: msl diff $name --merge, then msl update $name --apply, --abort, or --take-upstream"
 
   state="$(skill_state "$name")"
   [ "$state" != changed ] || { autosave; die "$name has live edits (saved); keep or discard them before updating"; }
@@ -1248,7 +1264,7 @@ update_apply() { # name msg fixes
   fi
   rev="$(latest_upstream_rev)"
   v="$(next_version)"
-  gw "$wt" add -A >/dev/null 2>&1
+  stage gw "$wt"
   gw "$wt" commit -q --allow-empty -m "$v: took upstream $rev${msg:+; $msg}" -m "Upstream-Rev: $rev" || version_failed "$name"
   c="$(git -C "$wt" rev-parse HEAD)"
   drop_merge "$name"

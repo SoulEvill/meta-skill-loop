@@ -69,7 +69,8 @@ The workspace format is versioned (`format:` in `workspace.yaml`), so a later re
   mine:         v1 ── v2 ── v3 ─────────── v4 (merge)    what the tools load = upstream + your refinements
 ```
 
-- The git dir sits in the workspace with `core.worktree` pointing at the live folder, so the folder **is** the working tree of `mine`. There's nothing to re-point, tools never see a `.git`, and installers can overwrite files without destroying history. Dotfiles are ignored.
+- The git dir sits in the workspace with `core.worktree` pointing at the live folder, so the folder **is** the working tree of `mine`. There's nothing to re-point, tools never see a `.git`, and installers can overwrite files without destroying history.
+- **What msl versions** is defined once (`stage` in `msl`): every file in the folder except dotfiles and dot-folders, whatever the folder's own `.gitignore` says. Every snapshot, version, and merge uses that one definition.
 - Every commit on `mine` is a version and is tagged `v1`, `v2`, …. The subject says what changed; an `Upstream-Rev: <rev>` trailer records which upstream a version is based on.
 - Changes in the live folder that aren't a version yet are "live edits". Each `msl` call that sees them saves them with `git stash`, so nothing unversioned can be lost. `discard` throws them away and `restore` re-applies the latest saved ones.
 - **One folder.** `path` is the skill's one real folder. `links` are its other install locations (in other tools' folders), each of which should be a link to it. `add` records them; `msl link` replaces a separate copy with a link, moving the copy into `archive/copies/`. `status` flags a location that became a separate copy again (say, a reinstall with `--copy`). msl never copies files between folders.
@@ -109,13 +110,13 @@ fixed_in: v4                  # set by msl when applied; rollback reads it to re
 
 - One file per entry means no append races between concurrent sessions, easy deduplication, and sharing later by copying files. `msl feedback add` is the **single writer**: it assigns ids, stamps the version and time, and validates fields.
 - **Which feedback a version fixed** lives only in the entries (`fixed_in`). History, rollback, and revert read it from there, so linking an entry after the fact (`feedback mark <id> applied --fixed-in v4`) works the same as `keep --fixes`.
-- **Conversations.** Tools delete old conversations (Claude Code after 30 days by default), so msl copies the file into `sessions/` and points to the copy. Only a conversation msl can identify for certain is copied: in Claude Code, the file named by `CLAUDE_CODE_SESSION_ID`; anywhere, a file passed with `--session`. Guessing ("the newest conversation file") could attach an unrelated chat, so without an identity the agent writes the relevant exchanges into the entry instead (Cursor keeps chats in its own database; Codex's current-session identity isn't verified yet). A later feedback entry from the same conversation refreshes the same copy.
+- **Conversations.** Tools delete old conversations (Claude Code after 30 days by default), so msl copies the file into `sessions/` (named by a hash of where it came from plus its file name) and points to the copy. Only a conversation msl can identify for certain is copied: in Claude Code, the file named by `CLAUDE_CODE_SESSION_ID`; anywhere, a file passed with `--session`. Guessing ("the newest conversation file") could attach an unrelated chat, so without an identity the agent writes the relevant exchanges into the entry instead (Cursor keeps chats in its own database; Codex's current-session identity isn't verified yet). A later feedback entry from the same conversation refreshes the same copy.
 
 **Who else writes the folder** (decided at `add`) determines how an upstream update is recognized:
 
 | kind | Other writer | New upstream recognized by |
 |---|---|---|
-| `skills-cli` | `npx skills update` | the lock-file revision isn't recorded on `upstream` yet, or the folder holds a known upstream version |
+| `skills-cli` | `npx skills update` | the lock-file revision differs from the last one msl saw (msl notes every revision it sees, even one that changed only a dotfile), or the folder holds a known upstream version |
 | `local` | you, a skill creator, `git pull` (for a skill inside a git repo) | never: every change is a live edit to keep or discard |
 
 A skill inside a git repo is `local` on purpose: git owns that folder's history, merges and pulls. Running a second version control over the same files (an earlier design) caused most of the bugs found in review.
