@@ -19,6 +19,8 @@ bash ~/.cursor/skills/meta-skill-loop/scripts/msl init
 
 If none works, use the folder your tool loaded this skill from: `bash <that folder>/../meta-skill-loop/scripts/msl init`.
 
+If msl says to offer the one-time setup, run `msl setup` yourself and, when you report back, briefly offer what it prints for the tool you're running in; make each change only if the user agrees.
+
 If the `meta-skill-loop` skill isn't installed at all: tell the user (`npx skills@latest add SoulEvill/meta-skill-loop --skill '*' -g`) and show them the feedback entry you would have logged, so nothing is lost.
 
 ## Steps

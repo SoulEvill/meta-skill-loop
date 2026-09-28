@@ -2,12 +2,13 @@
 
 Rewritten at the end of every working session, so the next session (human or agent, local or cloud) can pick up. It's a snapshot, not a history: git log has the history. For the design, see [design.md](design.md). The code is the source of truth.
 
-_Last updated: 2026-09-28, after PR #1 merged and the README and install were simplified._
+_Last updated: 2026-09-28, after PR #3 (install like the other Wendao skills); then the one-time setup moved from the README into first use._
 
 ## Where things stand
 
 - **v0.2.0 is merged to `main`** (PR #1, after three independent review rounds). Not tagged yet.
 - **Install** follows the other Wendao skills (`SoulEvill/wendao-skills`): `npx skills@latest add SoulEvill/meta-skill-loop --skill '*' --agent cursor claude-code codex -g`. The skills CLI's default mode keeps one real folder in `~/.agents/skills` and links Claude Code's, which is meta-skill-loop's one-folder model; `--copy` is no longer recommended.
+- **README** is short: install, the loop (feedback, refine, go back), a few facts. The one-time setup (the rules line, allowing `msl`) moved out of it into `msl setup`. Until that has been shown, every msl command reminds the agent on stderr to offer it (an instruction in the skill alone was forgotten in 1 of 2 real runs; with the reminder, offered in 4 of 4). "set up meta-skill-loop" offers it again.
 - **Stays its own repo**, separate from wendao-skills: it's a tool with its own code, tests, and releases, while wendao-skills holds prose skills. Decided with the user.
 - **The core model** (design.md §5):
   - one real folder per skill; other tool folders link to it (`msl link`, with approval; copies are set aside, never deleted);

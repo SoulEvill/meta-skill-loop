@@ -19,6 +19,8 @@ bash ~/.cursor/skills/meta-skill-loop/scripts/msl init
 
 If none works, use the folder your tool loaded this skill from: `bash <that folder>/scripts/msl init`.
 
+If msl says to offer the one-time setup, run `msl setup` yourself and, when you report back, briefly offer what it prints for the tool you're running in; make each change only if the user agrees.
+
 **Versions work like git.** Changes in a skill folder are *live edits* until `msl keep` makes them the next version (v2, v3, …). `msl discard` throws them away; they're saved, and `msl restore` brings them back. A skill installed with the `skills` CLI also tracks the published *upstream* versions, and updates are merged into the user's version instead of overwriting it. Each skill has one real folder; other tool folders link to it, so an edit reaches every tool.
 
 ## Status: "meta-skill-loop", "status", "which skills have feedback?"
@@ -35,14 +37,10 @@ Run `msl status` and summarize it in a few lines: each skill's version (`v3*` me
 2. Confirm which to add. Suggest the ones the user actually uses, not every skill on disk.
 3. Run `msl add <name>` for each (or `msl add <path>` for a specific folder). The skill is not modified. msl reports the kind: `skills-cli` (installed by the `skills` CLI, so it has upstream updates) or `local` (everything else, including skills inside a git repo, whose pulls simply show up as changes to keep).
 4. If msl says the skill is also a separate copy in another tool's folder, ask whether to link it so one edit reaches every tool: `msl link <name>`. The copy is set aside in `~/.meta-skill-loop/archive/`, not deleted.
-5. The first time, suggest the one-time setup below if the user hasn't done it.
 
-**One-time setup (recommended).** So the agent offers to log feedback when the user corrects a skill, the user adds this line to their tool's own rules: *"When the user corrects how a skill behaved or gives feedback on a skill, offer to log it with the meta-skill-feedback skill."*
-- Cursor: Settings > Rules > User Rules.
-- Codex: `~/.codex/AGENTS.md`.
-- Claude Code: `~/.claude/CLAUDE.md`.
+## Set up: "set up meta-skill-loop"
 
-Offer to add it to the Codex or Claude Code file for them. Cursor's user rules are set in its settings UI.
+Run `msl setup` and offer what it prints, only for the tool you're running in. Make each change only if the user agrees; for Cursor, tell them where to paste the line.
 
 ## Versions: "show versions of pr-review", "what changed?", "compare v2 and v4"
 

@@ -30,7 +30,7 @@ case "$AGENT" in
   *) echo "unknown agent: $AGENT" >&2; exit 2 ;;
 esac
 
-# Ask the agent one thing; print its answer; keep the transcript.
+# Ask the agent one thing; print its answer; keep the transcript (Claude Code: also every tool call, in N.txt.jsonl).
 ask() {
   n=$((n + 1))
   local t="$HOME/transcripts/$n.txt"
@@ -39,7 +39,9 @@ ask() {
       (cd "$PROJECT" && claude -p "$1" --allowedTools "Skill" "Read" "Bash(ls:*)" "Bash(test:*)" \
         "Bash(bash ~/.claude/skills/meta-skill-loop/scripts/msl:*)" "Bash(bash ~/.agents/skills/meta-skill-loop/scripts/msl:*)" \
         "Bash($skills_dir/meta-skill-loop/scripts/msl:*)" "Bash(bash $skills_dir/meta-skill-loop/scripts/msl:*)" \
-        "Bash(../meta-skill-loop/scripts/msl:*)" "Bash(~/.meta-skill-loop/bin/msl:*)" "Bash($HOME/.meta-skill-loop/bin/msl:*)") ;;
+        "Bash(../meta-skill-loop/scripts/msl:*)" "Bash(~/.meta-skill-loop/bin/msl:*)" "Bash($HOME/.meta-skill-loop/bin/msl:*)" \
+        --output-format stream-json --verbose < /dev/null > "$t.jsonl" 2>&1   # every tool call, for diagnosing a failure
+      jq -rR 'fromjson? | select(.type == "result") | .result' "$t.jsonl") ;;
     cursor)
       (cd "$PROJECT" && cursor-agent -p --force --output-format text "$1") ;;
     codex)
@@ -66,6 +68,8 @@ fb="$(find "$HOME/.meta-skill-loop/skills/greeting/feedback" -name 'fb-*.md' 2>/
 if [ -n "$fb" ] && grep -qi 'exclamation' "$fb"; then ok "feedback entry written for greeting"; else bad "feedback entry written for greeting" "$(last)"; fi
 if [ -x "$HOME/.meta-skill-loop/bin/msl" ]; then ok "workspace and launcher set up on first use"; else bad "workspace set up on first use" "$(last)"; fi
 if grep -q '!!!' "$skills_dir/greeting/SKILL.md"; then ok "logging feedback did not edit the skill"; else bad "logging feedback did not edit the skill" "$(last)"; fi
+if grep -Eqi 'CLAUDE\.md|settings\.json|rule|allow' "$(last)"; then ok "first use offers the one-time setup"; else bad "first use offers the one-time setup" "$(last)"; fi
+if ! grep -qs 'meta-skill-feedback' "$HOME/.claude/CLAUDE.md" "$HOME/.codex/AGENTS.md"; then ok "setup is offered, not done without asking"; else bad "setup is offered, not done without asking"; fi
 
 echo "status and versions"
 out="$(ask "meta-skill-loop status")"
