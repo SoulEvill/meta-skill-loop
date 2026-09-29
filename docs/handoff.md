@@ -2,16 +2,16 @@
 
 Rewritten at the end of every working session, so the next session (human or agent, local or cloud) can pick up. It's a snapshot, not a history: git log has the history. For the design, see [design.md](design.md). The code is the source of truth.
 
-_Last updated: 2026-09-29: PR #4 (one skill, explicit capture, 0.3.0) is in review; a stacked PR adds "send upstream"._
+_Last updated: 2026-09-29: PR #4 (one skill, explicit capture, 0.3.0) is merged; PR #5 adds "send upstream"._
 
 ## Where things stand
 
-- **v0.2.0 is on `main`** (PR #1, three independent review rounds; PR #3 simplified the install). Never tagged. **PR #4** makes it **0.3.0**: one skill, explicit capture, a shorter README.
+- **0.3.0 is on `main`** (PR #4: one skill, explicit capture, a shorter README; before it, PR #1 and PR #3). Never tagged yet. **PR #5** adds "send upstream" to 0.3.0.
 - **Install** follows the other Wendao skills (`SoulEvill/wendao-skills`): `npx skills@latest add SoulEvill/meta-skill-loop --skill meta-skill-loop --agent cursor claude-code codex -g`. The skills CLI's default mode keeps one real folder in `~/.agents/skills` and links Claude Code's, which is meta-skill-loop's one-folder model; `--copy` is no longer recommended.
 - **One skill** (decided with the user): `SKILL.md` routes to `references/feedback.md` and `references/refine.md`, like Anthropic's skill-creator. It was three skills; an old install keeps `meta-skill-feedback` and `meta-skill-refine` after a reinstall or `npx skills update -g -y` (verified), and their old descriptions keep offering to log feedback, so `msl status` shows the command to remove them and the README's "Upgrading from 0.2" also covers the rules line 0.2 suggested.
 - **Capture is explicit** (decided with the user): feedback is logged only when the user asks. The agent doesn't log or suggest it on its own. Real Claude Code runs: with the old wording, a plain correction got an offer to log in 3 of 3; with the new, no skill call and no offer in 3 of 3. Automatic capture is a later opt-in setting (design.md §8, phase 3). No setup, rules lines, or hooks.
 - **README** is short: install, the loop (log feedback, refine, go back), a few facts.
-- **Send upstream** (decided with the user; stacked PR on #4, branch `claude/inspiring-ritchie-n204ga-upstream`): "send this upstream" offers a skills-cli skill's refinements to its source as a GitHub issue (default) or a PR (on request, via `gh`), after the user approves the exact text. `msl diff --upstream` names the source repo, folder, and apply command; msl stays offline. Skills in the user's own git repos are out of scope for now.
+- **Send upstream** (decided with the user; PR #5, branch `claude/inspiring-ritchie-n204ga-upstream`): "send this upstream" offers a skills-cli skill's refinements to its source as a GitHub issue (default) or a PR (on request, via `gh`), after the user approves the exact text. `msl diff --upstream` names the source repo, folder, and apply command; msl stays offline. Skills in the user's own git repos are out of scope for now.
 - **Stays its own repo**, separate from wendao-skills: it's a tool with its own code, tests, and releases, while wendao-skills holds prose skills. Decided with the user.
 - **The core model** (design.md §5):
   - one real folder per skill; other tool folders link to it (`msl link`, with approval; copies are set aside, never deleted);
@@ -47,7 +47,7 @@ The per-skill locks and workspace-wide id reservation added during the review we
 
 ## Next steps
 
-1. After PR #4 merges, tag `v0.3.0` on `main` (the release workflow checks it matches `MSL_VERSION`).
+1. After PR #5 merges, tag `v0.3.0` on `main` (the release workflow checks it matches `MSL_VERSION`).
 2. The user configures repo protection from `docs/maintaining.md`.
 3. The user tries it in Cursor with the README's install command: add, feedback, refine, keep, update.
 4. Link meta-skill-loop from the wendao-skills README once that repo is public.
