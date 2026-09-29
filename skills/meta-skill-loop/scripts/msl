@@ -18,7 +18,7 @@
 set -euo pipefail
 unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_COMMON_DIR 2>/dev/null || true
 
-MSL_VERSION="0.2.0"
+MSL_VERSION="0.3.0"
 MSL_FORMAT=1
 MSL_HOME="${MSL_HOME:-$HOME/.meta-skill-loop}"
 TAB="$(printf '\t')"
@@ -533,7 +533,7 @@ session_file() {
 # the installed meta-skill-loop skill, so updating the skill (npx skills update,
 # git pull) updates msl too. Rewritten whenever it's out of date.
 
-launcher_text() { # hub skill folder
+launcher_text() { # the installed meta-skill-loop folder
   cat <<EOF
 #!/bin/sh
 # meta-skill-loop launcher: runs msl from the installed meta-skill-loop skill.
@@ -541,7 +541,7 @@ for d in "$1" "\$HOME/.agents/skills/meta-skill-loop" "\$HOME/.cursor/skills/met
          "\$HOME/.claude/skills/meta-skill-loop" "\$HOME/.codex/skills/meta-skill-loop"; do
   if [ -f "\$d/scripts/msl" ]; then exec "\${MSL_BASH:-bash}" "\$d/scripts/msl" "\$@"; fi
 done
-echo "msl: the meta-skill-loop skill is not installed. Install it: npx skills@latest add SoulEvill/meta-skill-loop --skill '*' -g" >&2
+echo "msl: the meta-skill-loop skill is not installed. Install it: npx skills@latest add SoulEvill/meta-skill-loop --skill meta-skill-loop -g" >&2
 exit 1
 EOF
 }
@@ -584,10 +584,42 @@ EOF
   printf 'workspace: %s (id %s)\n' "$(tilde "$MSL_HOME")" "$(ws_id)"
 }
 
+# meta-skill-loop itself, and the two skills that versions before 0.3 shipped alongside it.
+own_skill() { case "$1" in meta-skill-loop|meta-skill-feedback|meta-skill-refine) return 0 ;; esac; return 1; }
+
+# Those two skills survive a reinstall or `npx skills update -g -y`, and their descriptions
+# still offer to log feedback unasked (0.3 stopped that), so wherever msl lists skills it
+# says how to remove each installation. Notes name the installed entry, never the folder
+# a link points to: a link is removed on its own, and its target is left alone.
+leftover_notes() {
+  local n entry phys real out=""
+  for n in meta-skill-feedback meta-skill-refine; do
+    # Real (non-link) installations, to recognize links that merely point at one of them.
+    real="$(install_paths "$n" | while IFS="$TAB" read -r entry phys; do
+      [ -L "$entry" ] || printf '%s\n' "$phys"; done)"
+    while IFS="$TAB" read -r entry phys; do
+      [ -n "$entry" ] || continue
+      if [ -L "$entry" ]; then
+        # The skills CLI's own link to its real folder goes away with that folder's removal.
+        case "$NL$real$NL" in *"$NL$phys$NL"*) continue ;; esac
+        out="${out}note: $n ($(tilde "$entry"), a link to $(tilde "$phys")) is left over from meta-skill-loop 0.2, now one skill. Remove just the link: rm $(tilde "$entry"). $(tilde "$phys") itself is kept.$NL"
+      elif in_user_root "$entry"; then
+        out="${out}note: $n ($(tilde "$entry")) is left over from meta-skill-loop 0.2, now one skill. Remove it: npx skills@latest remove $n -g$NL"
+      else
+        out="${out}note: $n ($(tilde "$entry")) is left over from meta-skill-loop 0.2, now one skill. Delete that folder, or run npx skills@latest remove $n in that project.$NL"
+      fi
+    done <<EOF
+$(install_paths "$n")
+EOF
+  done
+  [ -z "$out" ] || printf '\n%s      If you added it, also remove the line mentioning meta-skill-feedback from your agent rules (Cursor User Rules, ~/.claude/CLAUDE.md, ~/.codex/AGENTS.md).\n' "$out"
+}
+
 list_installed() {
   local found=0 new=0 name path mark rows=""
   while IFS="$TAB" read -r name path; do
     [ -n "$name" ] || continue
+    if own_skill "$name" && ! is_managed "$name"; then continue; fi
     found=$((found + 1))
     if is_managed "$name"; then mark="managed"; else mark="new"; new=$((new + 1)); fi
     rows="$rows$(printf '%-8s %-28s %s' "$mark" "$name" "$(tilde "$path")")
@@ -595,8 +627,14 @@ list_installed() {
   done <<EOF
 $(all_skills)
 EOF
-  printf '%s' "$rows" | LC_ALL=C sort -s -k1,1r -k2,2
-  printf '\n%s skill folders found, %s not managed yet. Add one: msl add <name>\n' "$found" "$new"
+  if [ "$found" = 0 ]; then
+    printf 'No skills found in ~/.agents/skills, ~/.cursor/skills, ~/.claude/skills, ~/.codex/skills, or this repo'"'"'s. Add one by path: msl add <path>\n'
+  else
+    printf '%s' "$rows" | LC_ALL=C sort -s -k1,1r -k2,2
+    if [ "$found" = 1 ]; then printf '\n1 skill folder found' ; else printf '\n%s skill folders found' "$found"; fi
+    printf ', %s not managed yet. Add one: msl add <name>\n' "$new"
+  fi
+  leftover_notes
 }
 
 cmd_add() {
@@ -796,12 +834,13 @@ cmd_status() {
   [ -z "$notes" ] || printf '\n%s\n' "$notes"
   if [ $# -eq 0 ]; then
     while IFS="$TAB" read -r name _; do
-      case "$name" in ''|meta-skill-loop|meta-skill-feedback|meta-skill-refine) continue ;; esac
+      if [ -z "$name" ] || own_skill "$name"; then continue; fi
       is_managed "$name" || unmanaged=$((unmanaged + 1))
     done <<EOF
 $(all_skills)
 EOF
     [ "$unmanaged" = 0 ] || printf '\n%s installed skill folder(s) not managed yet: msl add\n' "$unmanaged"
+    leftover_notes
   fi
   return 0
 }

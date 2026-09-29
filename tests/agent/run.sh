@@ -3,7 +3,7 @@
 # way users do, then drive the agent with plain-language prompts and check the
 # outcomes on disk (not tool-call telemetry), so the same checks work for any agent.
 #
-#   tests/agent/run.sh claude-code   # needs `claude` and ANTHROPIC_API_KEY (or a login)
+#   tests/agent/run.sh claude-code   # needs `claude`, `jq`, and ANTHROPIC_API_KEY (or a login)
 #   tests/agent/run.sh cursor        # experimental: needs `cursor-agent` and CURSOR_API_KEY
 #   tests/agent/run.sh codex         # experimental: needs `codex` and OPENAI_API_KEY
 #
@@ -19,7 +19,6 @@ PROJECT="$HOME/project"
 mkdir -p "$PROJECT" "$HOME/transcripts"
 (cd "$PROJECT" && git init -q)
 fail=0
-n=0
 ok() { printf '  ok   %s\n' "$1"; }
 bad() { printf '  FAIL %s (transcript: %s)\n' "$1" "${2:-}"; fail=1; }
 
@@ -30,16 +29,19 @@ case "$AGENT" in
   *) echo "unknown agent: $AGENT" >&2; exit 2 ;;
 esac
 
-# Ask the agent one thing; print its answer; keep the transcript.
+# Ask the agent one thing; print its answer; keep the transcript (Claude Code: also every tool call, in N.txt.jsonl).
 ask() {
-  n=$((n + 1))
-  local t="$HOME/transcripts/$n.txt"
+  # Numbered from the files, not a counter: ask often runs in a $(…) subshell.
+  local t="$HOME/transcripts/$(($(count) + 1)).txt"
   case "$AGENT" in
     claude-code)
-      (cd "$PROJECT" && claude -p "$1" --allowedTools "Skill" "Read" "Bash(ls:*)" "Bash(test:*)" \
+      # shellcheck disable=SC2086
+      (cd "$PROJECT" && claude -p ${CONTINUE:+--continue} "$1" --allowedTools "Skill" "Read" "Edit" "Write" "Bash(ls:*)" "Bash(test:*)" \
         "Bash(bash ~/.claude/skills/meta-skill-loop/scripts/msl:*)" "Bash(bash ~/.agents/skills/meta-skill-loop/scripts/msl:*)" \
         "Bash($skills_dir/meta-skill-loop/scripts/msl:*)" "Bash(bash $skills_dir/meta-skill-loop/scripts/msl:*)" \
-        "Bash(../meta-skill-loop/scripts/msl:*)" "Bash(~/.meta-skill-loop/bin/msl:*)" "Bash($HOME/.meta-skill-loop/bin/msl:*)") ;;
+        "Bash(../meta-skill-loop/scripts/msl:*)" "Bash(~/.meta-skill-loop/bin/msl:*)" "Bash($HOME/.meta-skill-loop/bin/msl:*)" \
+        --output-format stream-json --verbose < /dev/null > "$t.jsonl" 2>&1   # every tool call, for diagnosing a failure
+      jq -rR 'fromjson? | select(.type == "result") | .result' "$t.jsonl") ;;
     cursor)
       (cd "$PROJECT" && cursor-agent -p --force --output-format text "$1") ;;
     codex)
@@ -48,7 +50,8 @@ ask() {
   esac > "$t" 2>&1 || true
   cat "$t"
 }
-last() { printf '%s' "$HOME/transcripts/$n.txt"; }
+count() { find "$HOME/transcripts" -name '*.txt' | wc -l | tr -d ' '; }
+last() { printf '%s' "$HOME/transcripts/$(count).txt"; }
 
 if [ "$AGENT" = codex ] && [ -n "${OPENAI_API_KEY:-}" ]; then
   printenv OPENAI_API_KEY | codex login --with-api-key >/dev/null  # stored in this throwaway HOME only
@@ -56,7 +59,7 @@ fi
 
 echo "install ($AGENT)"
 # shellcheck disable=SC2086
-npx -y skills@latest add "$REPO" --skill '*' $agents -g -y >/dev/null 2>&1
+npx -y skills@latest add "$REPO" --skill meta-skill-loop $agents -g -y >/dev/null 2>&1
 mkdir -p "$skills_dir/greeting" && cp "$REPO/tests/fixtures/greeting/SKILL.md" "$skills_dir/greeting/"
 if [ -f "$skills_dir/meta-skill-loop/SKILL.md" ]; then ok "skills installed in $skills_dir"; else bad "skills installed"; fi
 
@@ -78,6 +81,45 @@ before="$(find "$HOME/.meta-skill-loop/skills" -name 'fb-*.md' | wc -l | tr -d '
 out="$(ask "write a python function that reverses a string; just show the code")"
 after="$(find "$HOME/.meta-skill-loop/skills" -name 'fb-*.md' | wc -l | tr -d ' ')"
 if grep -q 'def ' <<<"$out" && [ "$before" = "$after" ]; then ok "no feedback logged for an unrelated task"; else bad "no feedback logged for an unrelated task" "$(last)"; fi
+
+if [ "$AGENT" = claude-code ]; then
+  echo "a plain correction, without asking to log it, leaves meta-skill-loop alone"
+  before="$(find "$HOME/.meta-skill-loop/skills" -name 'fb-*.md' | wc -l | tr -d ' ')"
+  hello="$(ask "hello!")"
+  out="$(CONTINUE=1 ask "hmm, three exclamation marks is way too much. one is enough")"
+  # Guard against the checks below passing vacuously: the greeting skill ran, and the
+  # correction got an answer. (Session ids can't show that --continue joined the same
+  # conversation: in a Claude Code cloud session every child run reports the parent's id.)
+  if grep -qF '!!!' <<<"$hello" && [ -n "$out" ]; then
+    ok "the correction follows a greeting from the skill"; else bad "the correction follows a greeting from the skill" "$(last).jsonl"; fi
+  after="$(find "$HOME/.meta-skill-loop/skills" -name 'fb-*.md' | wc -l | tr -d ' ')"
+  if [ "$before" = "$after" ]; then ok "nothing logged"; else bad "nothing logged" "$(last)"; fi
+  if ! grep -Eqi '(log|record|save|capture)[^.?!]{0,60}\?' <<<"$out"; then ok "not even offered"; else bad "not even offered" "$(last)"; fi
+  if ! grep -Eq '"skill":"meta-skill-loop"|meta-skill-loop/(SKILL\.md|references/)' "$(last).jsonl"; then ok "the skill was not invoked"; else bad "the skill was not invoked" "$(last).jsonl"; fi
+
+  echo "feedback without naming the skill"
+  # Same conversation: the greeting skill was just used, so that's the one.
+  CONTINUE=1 ask "ok, log feedback about that" >/dev/null
+  after2="$(find "$HOME/.meta-skill-loop/skills" -name 'fb-*.md' | wc -l | tr -d ' ')"
+  on_greeting="$({ grep -rli 'exclamation' "$HOME/.meta-skill-loop/skills/greeting/feedback" 2>/dev/null || true; } | wc -l | tr -d ' ')"
+  if [ "$after2" = $((after + 1)) ] && [ "$on_greeting" = 2 ]; then
+    ok "logged on the skill used in this conversation"; else bad "logged on the skill used in this conversation" "$(last).jsonl"; fi
+  # A new conversation where no skill was used: ask which one, log nothing.
+  out="$(ask "log some feedback: it was way too slow")"
+  after3="$(find "$HOME/.meta-skill-loop/skills" -name 'fb-*.md' | wc -l | tr -d ' ')"
+  if [ "$after3" = "$after2" ] && grep -q '?' <<<"$out"; then ok "no skill in sight: asks which, logs nothing"; else bad "no skill in sight: asks which, logs nothing" "$(last).jsonl"; fi
+
+  echo "refine: propose, change nothing until approved, then keep"
+  out="$(ask "refine the greeting skill")"
+  st="$("$HOME/.meta-skill-loop/bin/msl" status greeting)"
+  if grep -qF '!!!' "$skills_dir/greeting/SKILL.md" && grep -Eq 'greeting +[a-z-]+ +v1 ' <<<"$st"; then
+    ok "proposed without changing the skill"; else bad "proposed without changing the skill" "$(last).jsonl"; fi
+  CONTINUE=1 ask "looks good. apply it and keep it" >/dev/null
+  st="$("$HOME/.meta-skill-loop/bin/msl" status greeting)"
+  if ! grep -q '!!!' "$skills_dir/greeting/SKILL.md" && grep -Eq 'greeting +[a-z-]+ +v2 +0 +clean' <<<"$st"; then
+    ok "approved edit kept as v2, its feedback applied"; else bad "approved edit kept as v2, its feedback applied" "$(last).jsonl
+$st"; fi
+fi
 
 [ "$fail" = 0 ] && echo "agent tests ($AGENT): ok"
 exit "$fail"

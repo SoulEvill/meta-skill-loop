@@ -1,29 +1,12 @@
----
-name: meta-skill-refine
-description: Improve a skill from its logged feedback. Use when the user says "refine <skill>", "improve <skill> from feedback", "apply the feedback to <skill>", "tune <skill>", or asks to work through open feedback. Turns the feedback into a brief, makes the smallest edit the user approves, and records it as a new version.
----
+# Refine a skill
 
-# meta-skill-refine
-
-Turn a skill's accumulated feedback into a small, approved change, and record it as a new version tied to the feedback it fixes.
-
-Run `msl` as `~/.meta-skill-loop/bin/msl <command>`, exactly like that (not through `bash`), so one approval in the tool covers every call. Just run it: don't check for files first.
-
-Only if it fails because that file doesn't exist (the very first use), set it up once by trying these in order until one works, then run your command again:
-
-```sh
-bash ~/.agents/skills/meta-skill-loop/scripts/msl init
-bash ~/.claude/skills/meta-skill-loop/scripts/msl init
-bash ~/.cursor/skills/meta-skill-loop/scripts/msl init
-```
-
-If none works, use the folder your tool loaded this skill from: `bash <that folder>/../meta-skill-loop/scripts/msl init`.
+Turn a skill's accumulated feedback into a small, approved change, and record it as a new version tied to the feedback it fixes. Run `msl` as SKILL.md says.
 
 ## Steps
 
 1. **Check the skill.** Run `msl status <name>`. It should be `clean`.
    - If it has live edits (`changed`), ask whether to keep or discard them first.
-   - If a note mentions upstream, handle the update first (see the meta-skill-loop skill).
+   - If a note mentions upstream, handle the update first (Updates, in SKILL.md).
 
 2. **Read the feedback.** Run `msl feedback list <name>` for the open entries.
    - Compare each entry's `version` with the current version in `msl status`. Entries logged against an older version may already be fixed.
@@ -39,14 +22,14 @@ If none works, use the folder your tool loaded this skill from: `bash <that fold
    2. Doesn't run the tests before reviewing (fb-k3x9a2-021, P3): single entry
    ```
 
-   A single entry is a data point, not a pattern. Propose a change for it only if it's `P0` or `P1`, or the user asks.
+   A single entry is a data point, not a pattern. Propose a change for it only if it's `P0` or `P1`, or the user asks. If no theme qualifies, show the brief and ask which to act on.
 
 4. **Propose the smallest edit per theme.** Show a diff, or before and after, of exactly what would change. Keep the skill's voice and structure. Sharpen existing instructions rather than adding sections, and never rewrite the whole skill.
    - If the user has a skill-authoring skill (for example, a skill creator), you may hand it the brief and let it draft the edit. Either way, show the proposal before changing anything.
    - If the feedback suggests the skill is fundamentally wrong for the job, say so and let the user decide.
 
-5. **Apply only after approval.** Edit the files in the skill's folder. Then run `msl diff <name>` to confirm the change. It's now a live edit, not yet a version. Ask the user:
-   - **Keep it now:** `msl keep <name> -m "<what changed>" --fixes fb-…,fb-…`. This creates the next version and marks those entries applied. Use one keep per theme, so each version maps cleanly to its feedback.
+5. **Apply only after approval, one theme at a time.** Edit the files in the skill's folder for one theme. Then run `msl diff <name>` to confirm the change. It's now a live edit, not yet a version. Ask the user:
+   - **Keep it now:** `msl keep <name> -m "<what changed>" --fixes fb-…,fb-…`. This creates the next version and marks those entries applied. `keep` takes every live edit, so keep one theme before applying the next; each version then maps cleanly to its feedback.
    - **Try it first:** leave it live. Later, "keep it" or "discard it" (`msl discard <name>`; `msl restore <name>` brings it back).
 
    For feedback the user decides not to act on, run `msl feedback mark <id> declined`.

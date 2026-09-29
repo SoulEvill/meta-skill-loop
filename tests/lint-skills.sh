@@ -21,6 +21,13 @@ for f in "$REPO"/skills/*/SKILL.md; do
   [ "${#name}" -le 64 ] || bad "$dir" "name longer than 64 characters"
   [ -n "$desc" ] || bad "$dir" "description is empty"
   [ "${#desc}" -le 1024 ] || bad "$dir" "description longer than 1024 characters (${#desc})"
+  # Plain YAML scalars can't contain ": " or " #"; the skills CLI skips a skill whose frontmatter doesn't parse.
+  case "$desc" in
+    \"*\"|\'*\') ;;                                        # quoted
+    '>'|'|'|'>'[-+0-9]*|'|'[-+0-9]*) ;;                    # a block scalar (text on the next lines)
+    \"*|\'*|'>'*|'|'*|*": "*|*" #"*|*:|'#'*|,*|'- '*|'? '*|[][{}*\&!%@\`]*)
+      bad "$dir" "description isn't a valid plain YAML scalar (': ', ' #', a trailing ':', or a leading quote, [{*&!%@#,|> or backtick); quote it" ;;
+  esac
   # shellcheck disable=SC2016  # the pattern is literal on purpose
   if grep -nE '!`|\$\{CLAUDE_|\$ARGUMENTS|allowed-tools' "$f" >/dev/null; then
     bad "$dir" "uses tool-specific syntax (!\`cmd\`, \${CLAUDE_*}, \$ARGUMENTS, allowed-tools)"
