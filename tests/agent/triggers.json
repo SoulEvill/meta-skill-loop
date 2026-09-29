@@ -1,0 +1,23 @@
+[
+  { "query": "log feedback on the pr-review skill: it buried the one real bug under twenty style nits", "should_trigger": true },
+  { "query": "feedback on grill-me - it asked me 12 questions in one message, way too many", "should_trigger": true },
+  { "query": "can you record this for the greeting skill? it keeps ending with three exclamation marks and it's too much", "should_trigger": true },
+  { "query": "refine pr-review based on the feedback we've collected", "should_trigger": true },
+  { "query": "which of my skills have open feedback right now?", "should_trigger": true },
+  { "query": "show me the version history of my grill-me skill", "should_trigger": true },
+  { "query": "the last change to the pr-review skill made it worse, undo it", "should_trigger": true },
+  { "query": "is there a newer version of the greeting skill upstream? I want to keep my own tweaks", "should_trigger": true },
+  { "query": "send my change to the greeting skill back to its author as a github issue", "should_trigger": true },
+  { "query": "start keeping versions of my pr-review skill so I can roll back", "should_trigger": true },
+
+  { "query": "no, one exclamation mark is enough", "should_trigger": false },
+  { "query": "that review was way too nitpicky, next time just focus on actual bugs", "should_trigger": false },
+  { "query": "give me feedback on this function: def add(a, b): return a+b", "should_trigger": false },
+  { "query": "write a new skill that formats git commit messages the way our team likes", "should_trigger": false },
+  { "query": "review this diff for style issues:\n-x=1\n+x = 1", "should_trigger": false },
+  { "query": "revert my last git commit in this repo", "should_trigger": false },
+  { "query": "open a github issue for the login bug: users get a 500 on /login", "should_trigger": false },
+  { "query": "what version of node is installed here?", "should_trigger": false },
+  { "query": "in this python snippet, log the error to a file: try: run()\nexcept Exception as e: pass", "should_trigger": false },
+  { "query": "update the README to mention the new --force flag", "should_trigger": false }
+]

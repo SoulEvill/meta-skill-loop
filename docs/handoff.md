@@ -2,53 +2,52 @@
 
 Rewritten at the end of every working session, so the next session (human or agent, local or cloud) can pick up. It's a snapshot, not a history: git log has the history. For the design, see [design.md](design.md). The code is the source of truth.
 
-_Last updated: 2026-09-29: PR #4 (one skill, explicit capture, 0.3.0) is merged; PR #5 adds "send upstream"._
+_Last updated: 2026-09-29, in the "native by default" PR: 0.3.0 checked against agentskills.io, not yet tagged._
 
 ## Where things stand
 
-- **0.3.0 is on `main`** (PR #4: one skill, explicit capture, a shorter README; before it, PR #1 and PR #3). Never tagged yet. **PR #5** adds "send upstream" to 0.3.0.
-- **Install** follows the other Wendao skills (`SoulEvill/wendao-skills`): `npx skills@latest add SoulEvill/meta-skill-loop --skill meta-skill-loop --agent cursor claude-code codex -g`. The skills CLI's default mode keeps one real folder in `~/.agents/skills` and links Claude Code's, which is meta-skill-loop's one-folder model; `--copy` is no longer recommended.
-- **One skill** (decided with the user): `SKILL.md` routes to `references/feedback.md` and `references/refine.md`, like Anthropic's skill-creator. It was three skills; an old install keeps `meta-skill-feedback` and `meta-skill-refine` after a reinstall or `npx skills update -g -y` (verified), and their old descriptions keep offering to log feedback, so `msl status` shows the command to remove them and the README's "Upgrading from 0.2" also covers the rules line 0.2 suggested.
-- **Capture is explicit** (decided with the user): feedback is logged only when the user asks. The agent doesn't log or suggest it on its own. Real Claude Code runs: with the old wording, a plain correction got an offer to log in 3 of 3; with the new, no skill call and no offer in 3 of 3. Automatic capture is a later opt-in setting (design.md §8, phase 3). No setup, rules lines, or hooks.
-- **README** is short: install, the loop (log feedback, refine, go back), a few facts.
-- **Send upstream** (decided with the user; PR #5, branch `claude/inspiring-ritchie-n204ga-upstream`): "send this upstream" offers a skills-cli skill's refinements to its source as a GitHub issue (default) or a PR (on request, via `gh`), after the user approves the exact text. `msl diff --upstream` names the source repo, folder, and apply command; msl stays offline. Skills in the user's own git repos are out of scope for now.
-- **Stays its own repo**, separate from wendao-skills: it's a tool with its own code, tests, and releases, while wendao-skills holds prose skills. Decided with the user.
-- **The core model** (design.md §5):
-  - one real folder per skill; other tool folders link to it (`msl link`, with approval; copies are set aside, never deleted);
-  - two kinds: `skills-cli` (installed by the `skills` CLI; reviewed upstream updates) and `local` (everything else, including skills inside a git repo);
-  - four states: `clean`, `changed`, `upstream`, `missing`;
-  - one workspace lock: one msl command at a time.
-- **Formats** (settled before release): feedback entries (title, version, tool, conversation copy, severity `P0`–`P3`/`nit`, status `open`/`applied`/`declined`, `fixed_in`; free-form body), `workspace.yaml` with `format: 1` and a 6-character id, `skill.yaml` with `path` and `links`.
-- **Tests:** `tests/run.sh` (177, bash 5 and 3.2, always with a space in `$HOME`, `TZ=UTC`), skills lint (including that the frontmatter parses as YAML: the skills CLI silently skips a skill whose description contains `: `), a real `skills` CLI install (one skill, with its references; the default layout), and a real Claude Code agent test: explicit feedback logs; with no skill named it logs on the skill used in the conversation (a repeat is logged too, citing the earlier entry) or asks which; a plain correction logs nothing, suggests nothing, and doesn't load the skill; refine proposes, changes nothing until approved, then keeps v2 with its feedback applied. Each run keeps every tool call in `transcripts/N.txt.jsonl`. Run from a Claude Code cloud session, every child `claude` run reports the parent's session id, so the test can't tell conversations apart by id (its checks are content-based) and the conversation copy it produces isn't representative. CI runs the first three on Ubuntu and macOS.
-
-## Why the core changed (after review round 1)
-
-The independent review found 11 issues; all were fixed with regression tests (see the PR threads). Looking across every bug found so far, most came from two features: msl syncing several physical copies of a skill between tool folders (4 bugs, 2 of them data loss), and a `git` kind that ran msl's version control on top of the user's own git repo (3 bugs). Rather than keep hardening them, both were removed:
-- copies became links to one folder (the layout the `skills` CLI itself produces on update), so msl never copies files between folders;
-- skills inside a git repo became ordinary `local` skills: git owns pulls and merges; what a pull brings shows up as live edits.
-The per-skill locks and workspace-wide id reservation added during the review were replaced by one workspace lock.
+- **0.3.0 is on `main`** (PRs #4 and #5: one skill, explicit capture, send upstream), never tagged. The "native by default" PR finishes it; tag `v0.3.0` after it merges.
+- **Install:** `npx skills@latest add SoulEvill/meta-skill-loop --skill meta-skill-loop --agent cursor claude-code codex -g`, like the other Wendao skills. The skills CLI keeps one real folder in `~/.agents/skills` and links Claude Code's to it: meta-skill-loop's one-folder model.
+- **Native by default** (design.md §7, decided with the user): the skill follows agentskills.io.
+  - The agent runs `scripts/msl` from the skill's folder by path; no launcher, no setup step.
+  - Users can invoke it with `/meta-skill-loop` (Cursor, Claude Code) or `$meta-skill-loop` (Codex), or plain words.
+  - Portable frontmatter only (`name`, `description`, `license`, `compatibility`); Gotchas in `SKILL.md`; a refine checklist.
+  - `msl feedback add` starts managing the skill itself.
+  - Triggering is measured with the guide's eval format (`tests/agent/triggers.sh`).
+- **One skill:** `SKILL.md` routes to `references/feedback.md`, `refine.md`, and `contribute.md`. Leftover 0.2 skills (`meta-skill-feedback`, `meta-skill-refine`) get a note in `msl add` and `msl status` naming how to remove each installation.
+- **Capture is explicit:** feedback is logged only when the user asks; the agent doesn't log or offer on its own. Automatic capture is a later opt-in (design.md §8, phase 2).
+- **Send upstream:** "send this upstream" offers a skills-cli skill's changes to its source as a GitHub issue (default) or a PR (on request, via `gh`), after the user approves the exact text. msl stays offline.
+- **Stays its own repo**, separate from wendao-skills (a tool with code, tests, and releases vs. prose skills).
+- **The core model** (design.md §5): one real folder per skill (other tool folders link to it; `msl link` fixes a stray copy, keeping it aside); two kinds, `skills-cli` and `local`; four states, `clean`, `changed`, `upstream`, `missing`; one workspace lock.
+- **Formats** (settled): feedback entries (title, version, tool, conversation copy, severity `P0`–`P3`/`nit`, status `open`/`applied`/`declined`, `fixed_in`; free-form body), `workspace.yaml` (`format: 1`, a 6-character id), `skill.yaml` (`path`, `links`, source).
+- **Tests:**
+  - `tests/run.sh` (bash 5 and 3.2, a space in `$HOME`, `TZ=UTC`), skills lint (spec fields, YAML that parses), and a real `skills` CLI install. CI runs these on Ubuntu and macOS.
+  - `tests/agent/run.sh claude-code`: explicit feedback, `/meta-skill-loop`, status, versions, feedback with no skill named, a plain correction (no log, no offer, skill not loaded), refine end to end, and a send-upstream draft.
+  - `tests/agent/triggers.sh`: 20 labeled prompts, 3 runs each. See the PR for the latest rates.
+  - From a Claude Code cloud session, every child `claude` run reports the parent's session id, so agent tests check content, not ids, and their conversation copies aren't representative.
 
 ## Decided
 
 - Skills stay in place; meta-skill-loop never edits a skill except to apply an approved change. Replacing a separate copy with a link happens only with the user's approval.
-- Versions are git commits on `mine`, created only by keep, revert, rollback, or a taken/merged update.
+- Versions are git commits on `mine`, created only by keep, revert, rollback, or a taken or merged update.
 - Which feedback a version fixed lives only in the feedback files (`fixed_in`).
 - Conversations are copied only when identified for certain (Claude Code's session id, or `--session FILE`); copies are kept whole.
-- Stay on bash for now; the CLI and data formats are the contract, so a later port (Node) would be invisible to users.
-- Teams: individual workspaces for now. Next is `publish` (design.md §8, phase 2), not a team repo. Evals / golden dataset: later, not designed yet.
+- Stay on bash; the CLI and data formats are the contract, so a later port would be invisible to users.
+- "Publish" (a shared remote with its own CI) is dropped: send upstream plus a team's own skills repo covers it. Evals of skill output built from feedback: later, not designed yet.
 - Docs live in `docs/`; the Wiki was rejected because cloud sessions can't push to wikis.
 
 ## Not verified yet
 
-- Real-agent runs of revert, rollback, and update (Claude Code covers log, status, versions, refine, and keep).
-- Real Cursor and Codex runs (no keys here): triggering from descriptions, following `references/feedback.md` from the skill's folder, not suggesting feedback unasked, Cursor's approval prompts, Codex's `writable_roots`, and how Codex identifies the current conversation.
-- That Cursor loads a skill through a link in `~/.claude/skills` or `~/.cursor/skills` isn't needed: the real folder is in `~/.agents/skills`, which Cursor reads directly.
+- Real Cursor and Codex runs (no keys here): triggering, running `scripts/msl` by path, `/meta-skill-loop` and `$meta-skill-loop`, approval prompts, Codex's `writable_roots`, and how Codex identifies the current conversation. The trigger eval only drives Claude Code so far.
+- Real-agent runs of revert, rollback, and update.
+- When the skills CLI can't reach a source it still reports success, so `msl update --check` can say "up to date" against the last upstream seen (design.md §7).
 - Windows: WSL or Git Bash only.
 
 ## Next steps
 
-1. After PR #5 merges, tag `v0.3.0` on `main` (the release workflow checks it matches `MSL_VERSION`).
+1. Merge the "native by default" PR, then tag `v0.3.0` on `main` (the release workflow checks it matches `MSL_VERSION`).
 2. The user configures repo protection from `docs/maintaining.md`.
-3. The user tries it in Cursor with the README's install command: add, feedback, refine, keep, update.
-4. Link meta-skill-loop from the wendao-skills README once that repo is public.
-5. Then phase 2 (`publish`).
+3. The user uses it in Cursor for a week on real skills: `/meta-skill-loop`, log feedback, refine, keep, update. Count how often feedback actually gets logged; that decides whether automatic capture (phase 2) is worth building.
+4. Add Cursor and Codex to the trigger eval once there are keys (or from that week's observations).
+5. Retire the 0.2 leftover notes a release or two after 0.3.0.
+6. Link meta-skill-loop from the wendao-skills README once that repo is public.

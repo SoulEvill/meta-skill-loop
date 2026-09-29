@@ -25,6 +25,9 @@ script it uses; allow it.
 
 ## Use
 
+Ask your agent in plain words, as below. To be sure it uses meta-skill-loop, start with
+`/meta-skill-loop` (Cursor, Claude Code) or `$meta-skill-loop` (Codex).
+
 1. **Use your skills as usual.** When one gets something wrong, ask to log it:
    "log feedback on pr-review: it buried the real bug under style nits."
    It's logged only when you ask.

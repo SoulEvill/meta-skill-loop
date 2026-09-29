@@ -1,6 +1,14 @@
 # Refine a skill
 
-Turn a skill's accumulated feedback into a small, approved change, and record it as a new version tied to the feedback it fixes. Run `msl` as SKILL.md says.
+Turn a skill's accumulated feedback into a small, approved change, and record it as a new version tied to the feedback it fixes. `msl` is this skill's script, run as SKILL.md says.
+
+Progress:
+- [ ] 1. The skill is `clean`
+- [ ] 2. Open feedback read
+- [ ] 3. Brief written, grouped by theme
+- [ ] 4. Smallest edit proposed, per theme
+- [ ] 5. Approved edit applied and kept, one theme at a time
+- [ ] 6. Summary of what changed and what's still open
 
 ## Steps
 

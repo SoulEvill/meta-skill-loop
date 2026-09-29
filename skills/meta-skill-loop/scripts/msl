@@ -528,40 +528,10 @@ session_file() {
   printf '%s\n' "$HOME"/.claude/projects/*/"$CLAUDE_CODE_SESSION_ID".jsonl | newest
 }
 
-# ---------------------------------------------------------------- launcher ---
-# ~/.meta-skill-loop/bin/msl is a tiny launcher, not a copy: it runs the msl inside
-# the installed meta-skill-loop skill, so updating the skill (npx skills update,
-# git pull) updates msl too. Rewritten whenever it's out of date.
-
-launcher_text() { # the installed meta-skill-loop folder
-  cat <<EOF
-#!/bin/sh
-# meta-skill-loop launcher: runs msl from the installed meta-skill-loop skill.
-for d in "$1" "\$HOME/.agents/skills/meta-skill-loop" "\$HOME/.cursor/skills/meta-skill-loop" \\
-         "\$HOME/.claude/skills/meta-skill-loop" "\$HOME/.codex/skills/meta-skill-loop"; do
-  if [ -f "\$d/scripts/msl" ]; then exec "\${MSL_BASH:-bash}" "\$d/scripts/msl" "\$@"; fi
-done
-echo "msl: the meta-skill-loop skill is not installed. Install it: npx skills@latest add SoulEvill/meta-skill-loop --skill meta-skill-loop -g" >&2
-exit 1
-EOF
-}
-
-ensure_launcher() {
-  local hub want
-  hub="$(abspath "$(dirname "$0")/..")" || return 0
-  [ -f "$hub/SKILL.md" ] || return 0   # only when running from inside the skill
-  want="$(launcher_text "$hub")"
-  if [ "$(cat "$MSL_HOME/bin/msl" 2>/dev/null || true)" != "$want" ]; then
-    mkdir -p "$MSL_HOME/bin"
-    printf '%s\n' "$want" > "$MSL_HOME/bin/msl"
-    chmod +x "$MSL_HOME/bin/msl"
-  fi
-}
-
 # --------------------------------------------------------------- commands ---
 
 cmd_init() {
-  mkdir -p "$MSL_HOME/skills" "$MSL_HOME/sessions" "$MSL_HOME/bin"
+  mkdir -p "$MSL_HOME/skills" "$MSL_HOME/sessions"
   if [ ! -f "$MSL_HOME/workspace.yaml" ]; then
     printf 'format: %s\nid: %s\ncreated: %s\n' "$MSL_FORMAT" "$(new_ws_id)" "$(today)" > "$MSL_HOME/workspace.yaml"
   fi
@@ -580,7 +550,6 @@ never push it anywhere public.
     sessions/                        copies of the conversations feedback was logged in
 EOF
   fi
-  ensure_launcher
   printf 'workspace: %s (id %s)\n' "$(tilde "$MSL_HOME")" "$(ws_id)"
 }
 
@@ -859,7 +828,7 @@ cmd_feedback() {
 }
 
 feedback_add() {
-  local name="${1:-}" title="" severity="P2" tool="" about="" session="" ver id file body src dest
+  local name="${1:-}" title="" severity="P2" tool="" about="" session="" ver id file body src dest added=""
   [ -n "$name" ] || die "usage: msl feedback add <name> -t <title> [--severity P0|P1|P2|P3|nit] [--tool T] [--version vN] [--session FILE|none] < body"
   shift
   while [ $# -gt 0 ]; do
@@ -873,7 +842,6 @@ feedback_add() {
     esac
     shift
   done
-  use_skill "$name"
   title="$(printf '%s' "$title" | tr '\n' ' ' | sed 's/^ *//; s/ *$//')"
   [ -n "$title" ] || die "feedback add needs a one-line title: -t \"<what went wrong>\""
   case "$severity" in P0|P1|P2|P3|nit) ;; *) die "severity must be P0, P1, P2, P3, or nit" ;; esac
@@ -882,6 +850,9 @@ feedback_add() {
   fi
   body="$(cat)"
   [ -n "$(printf '%s' "$body" | tr -d '[:space:]')" ] || die "feedback body is empty (pass it on stdin)"
+  # Feedback on a skill that isn't managed yet starts managing it (the skill isn't modified).
+  is_managed "$name" || added="$(cmd_add "$name")"
+  use_skill "$name"
 
   if [ -n "$about" ]; then
     require_version "$about" "$name"
@@ -921,6 +892,7 @@ feedback_add() {
     printf -- '---\n%s\n' "$body"
   } > "$file"
   printf '%s logged for %s (%s)\n' "$id" "$name" "$ver"
+  [ -z "$added" ] || printf 'now managing it: %s\n' "$added"
   if [ -n "$session" ]; then
     printf 'conversation saved: %s\n' "$session"
   else
@@ -1326,11 +1298,11 @@ msl $MSL_VERSION: meta-skill-loop bookkeeping (data in $(tilde "$MSL_HOME"))
 
   msl status [name]                  managed skills, versions, open feedback, what needs attention
   msl add [name|path]                start managing a skill (not modified); no name: list installed skills
-  msl link <name>                    make other tool folders' copies links to the skill's one folder
+  msl link <name>                    replace separate copies in other tool folders with links (copies kept)
   msl remove <name>                  stop managing it (data archived; skill untouched)
 
   msl feedback add <name> -t <title> [--severity P0|P1|P2|P3|nit] [--tool T] [--version vN]
-                   [--session FILE|none] < body
+                   [--session FILE|none] < body     (starts managing the skill if needed)
   msl feedback list <name> [--all]
   msl feedback mark <fb-id> open|applied|declined [--fixed-in vN]
 
@@ -1341,9 +1313,10 @@ msl $MSL_VERSION: meta-skill-loop bookkeeping (data in $(tilde "$MSL_HOME"))
   msl history <name>
   msl revert <name> <vN>             undo one version, keep the rest
   msl rollback <name> <vN> [--yes]   go back to a version
-  msl update <name> [--check] [--no-fetch] | --apply [-m s] [--fixes ids] | --abort | --take-upstream
+  msl update <name> [--check] | --apply [-m s] [--fixes ids] | --abort | --take-upstream
 
-  msl path <name> | msl git <name> <git args…> | msl init | msl version
+  msl path <name>                    the skill's folder
+  msl version
 EOF
 }
 
@@ -1356,7 +1329,7 @@ main() {
     *) usage >&2; exit 2 ;;
   esac
   case "$cmd" in version|--version|help|-h|--help) ;; *) lock_workspace ;; esac
-  case "$cmd" in init|version|--version|help|-h|--help) ;; *) ensure_ws; ensure_launcher ;; esac
+  case "$cmd" in init|version|--version|help|-h|--help) ;; *) ensure_ws ;; esac
   case "$cmd" in
     init) cmd_init "$@" ;;
     add) cmd_add "$@" ;;

@@ -24,7 +24,8 @@ lacks() {
 }
 fails() { ! "$@" >/dev/null 2>&1; }                  # command...
 fails_on() { local in="$1"; shift; ! printf '%s' "$in" | "$@" >/dev/null 2>&1; }  # stdin, command...
-msl() { "$SH" "$HOME/.meta-skill-loop/bin/msl" "$@"; }
+# The way the agent runs it: the script inside the installed skill, by its path.
+msl() { "$SH" "$HOME/.agents/skills/meta-skill-loop/scripts/msl" "$@"; }
 
 new_home() {
   # A space in the path on purpose: macOS user names and folders often have one.
@@ -32,7 +33,6 @@ new_home() {
   HOME="$(printf '%s' "$HOME" | sed 's#//*#/#g')"   # macOS TMPDIR ends in a slash
   export HOME
   unset MSL_HOME CLAUDE_CODE_SESSION_ID CLAUDECODE
-  export MSL_BASH="$SH"   # the launcher runs msl with the bash under test
   cd "$HOME"
 }
 
@@ -54,11 +54,11 @@ lock() { # name rev
 echo "install and first use"
 new_home
 skill "$HOME/.cursor/skills/grill-me" grill-me "Ask hard questions."
-# Two separate copies (a --copy install, or by hand); the launcher tests below rely on it.
+# Two separate copies (a --copy install, or by hand).
 for t in "$HOME/.agents/skills" "$HOME/.claude/skills"; do mkdir -p "$t" && cp -R "$REPO"/skills/* "$t/"; done
-"$SH" "$HOME/.agents/skills/meta-skill-loop/scripts/msl" init >/dev/null
-check "first use installs the msl launcher" test -x "$HOME/.meta-skill-loop/bin/msl"
-check "launcher runs the installed skill, not the clone" fails grep -qF "$REPO" "$HOME/.meta-skill-loop/bin/msl"
+msl status >/dev/null
+check "the first command sets up the workspace by itself" test -f "$HOME/.meta-skill-loop/workspace.yaml"
+check "no launcher or other copy of msl is written" test ! -e "$HOME/.meta-skill-loop/bin"
 check "workspace has a format version" grep -q '^format: 1$' "$HOME/.meta-skill-loop/workspace.yaml"
 check "workspace has a 6-character id" grep -Eq '^id: [a-z0-9]{6}$' "$HOME/.meta-skill-loop/workspace.yaml"
 check "first use manages nothing by itself" test -z "$(ls "$HOME/.meta-skill-loop/skills")"
@@ -129,7 +129,8 @@ check "severity defaults to P2" grep -q '^severity: P2$' "$f2"
 check "a title is required" fails_on x msl feedback add grill-me
 check "empty body rejected" fails_on "" msl feedback add grill-me -t t
 check "bad severity rejected" fails_on x msl feedback add grill-me -t t --severity huge
-check "feedback on unmanaged skill rejected" fails_on x msl feedback add nope -t t
+check "feedback on a skill that isn't installed is rejected" fails_on x msl feedback add nope -t t
+check "and nothing is left behind for it" test ! -e "$HOME/.meta-skill-loop/skills/nope"
 check "feedback --version rejects an unknown version" fails_on x msl feedback add grill-me -t t --version v9
 msl feedback mark "$(fb 002)" declined >/dev/null
 check "mark sets the status" grep -q '^status: declined$' "$f2"
@@ -563,15 +564,23 @@ has "remove archives the data" "$(ls "$HOME/.meta-skill-loop/archive")" "tmp-ski
 check "remove stops managing it" fails msl status tmp-skill
 check "remove keeps the conversation copies" test -n "$(copied cur-id.jsonl)"
 
-echo "launcher follows the installed skill"
+echo "feedback on a skill that isn't managed yet"
+skill "$HOME/.agents/skills/newbie" newbie "Be new."
+before="$(cat "$HOME/.agents/skills/newbie/SKILL.md")"
+check "a rejected entry doesn't start managing the skill" fails_on "" msl feedback add newbie -t t
+check "(still not managed)" fails msl status newbie
+out="$(echo x | msl feedback add newbie -t "first feedback")"
+has "feedback on an installed, unmanaged skill starts managing it" "$out" "now managing it: added newbie (local) as v1"
+check "the entry id is still the first line" grep -Eq '^fb-[a-z0-9]{6}-[0-9]{3} logged for newbie' <<<"$out"
+check "the skill itself is untouched" test "$(cat "$HOME/.agents/skills/newbie/SKILL.md")" = "$before"
+has "and the feedback is on it" "$(msl status newbie)" "newbie"
+msl remove newbie >/dev/null && rm -rf "$HOME/.agents/skills/newbie"
+
+echo "msl runs from the installed skill"
 hub="$HOME/.agents/skills/meta-skill-loop/scripts/msl"
 sed 's/^MSL_VERSION="[^"]*"/MSL_VERSION="9.9.9"/' "$hub" > "$HOME/x" && mv "$HOME/x" "$hub"
-has "updating the skill updates msl (no stale copy)" "$(msl version)" "9.9.9"
-rm -rf "$HOME/.agents/skills/meta-skill-loop"
-has "launcher falls back to another installed copy" "$(msl version)" "0."
-check "launcher now points at that copy" grep -q '.claude/skills/meta-skill-loop" "' "$HOME/.meta-skill-loop/bin/msl"
-rm -rf "$HOME/.claude/skills/meta-skill-loop"
-has "launcher explains how to reinstall" "$(msl status 2>&1 || true)" "npx skills@latest add SoulEvill/meta-skill-loop --skill meta-skill-loop"
+has "updating the skill is updating msl (no copy to go stale)" "$(msl version)" "9.9.9"
+check "still no launcher" test ! -e "$HOME/.meta-skill-loop/bin"
 
 printf '\n%s passed, %s failed\n' "$pass" "$fail"
 [ "$fail" = 0 ]
