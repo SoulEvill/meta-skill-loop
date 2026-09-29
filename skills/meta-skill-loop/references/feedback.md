@@ -53,7 +53,7 @@ Capture one piece of feedback about a skill as an entry, then get back to what t
    EOF
    ```
 
-   If the skill isn't managed yet, this starts managing it (the skill itself isn't modified); say so in one line. If msl finds no skill by that name (a typo, or not installed), run `msl add` to list the installed ones and ask the user which they meant. msl records which version of the skill the feedback is about. If it's about an earlier version (for example, a change the user just undid), add `--version vN`.
+   If the skill isn't managed yet, this starts managing it (the skill itself isn't modified): tell the user, and pass on any note msl prints, since each names the command that deals with it. If msl finds no skill by that name (a typo, or not installed), run `msl add` to list the installed ones and ask the user which they meant. If it says different skills share the name, ask which one, run `msl add <its path>`, and log again. msl records which version of the skill the feedback is about. If it's about an earlier version (for example, a change the user just undid), add `--version vN`.
 
 4. **Confirm and continue.** Report the entry id and the skill in one line ("Logged fb-k3x9a2-012 for pr-review."). If the user also wants the current task redone the right way, do it now. The feedback is recorded either way.
 

@@ -9,7 +9,7 @@ compatibility: Requires bash and git. Node.js (npx) to update skills installed w
 
 meta-skill-loop keeps feedback and a version history for the user's skills. Skills stay where their tools load them, and meta-skill-loop **never edits a skill except to apply a change the user approved**. Its data lives in `~/.meta-skill-loop/`.
 
-All bookkeeping goes through `scripts/msl` in this skill's folder (usually `~/.agents/skills/meta-skill-loop/`). In these instructions, `msl <command>` means `bash <this skill's folder>/scripts/msl <command>`; always use that full path, so one approval in the tool covers every call. The first command sets up `~/.meta-skill-loop` by itself. `msl help` lists the commands. Files named `references/…` below are in the same folder.
+All bookkeeping goes through `scripts/msl` in this skill's folder: the folder your tool loaded this skill from (usually `~/.agents/skills/meta-skill-loop/` or `~/.claude/skills/meta-skill-loop/`). In these instructions, `msl <command>` means `bash <this skill's folder>/scripts/msl <command>`. Write that path the same way every time, so an approval the user gives in the tool keeps applying. The first command sets up `~/.meta-skill-loop` by itself; `msl help` lists the commands. Files named `references/…` below are in the same folder.
 
 **Versions work like git.** Changes in a skill folder are *live edits* until `msl keep` makes them the next version (v2, v3, …). `msl discard` throws them away; they're saved, and `msl restore` brings them back. A skill installed with the `skills` CLI also tracks the published *upstream* versions, and updates are merged into the user's version instead of overwriting it.
 
@@ -70,14 +70,17 @@ Then wait for the user's decision:
 
 `msl remove <name>` archives its versions and feedback. The skill itself is untouched.
 
-## Gotchas
+## Rules
 
 - Log feedback only when the user asks. A correction on its own ("no, shorter") is not a request to log it, and don't offer.
 - Never edit a skill without the user's approval, and never move, delete, or rename a skill folder.
+- Don't edit `~/.meta-skill-loop/` by hand; use `msl`. The one exception is a pending merge in `…/merge/`.
+- `~/.meta-skill-loop` is private: feedback and copies of conversations. Never paste it or copy it anywhere public.
+
+## Gotchas
+
 - `msl keep` takes every live edit in the folder at once: keep one change before making the next.
 - Edits made outside msl (by hand, by another tool, by a `git pull`) show up as `changed`: live, but not a version until kept.
 - Don't run `npx skills update` on a managed skill yourself: `msl update` runs it and merges the user's changes. (If an update was run directly, status shows `upstream`, and `msl update` takes it from there.)
 - Don't search the disk for skills: `msl add` lists them, and `msl path <name>` gives a managed skill's folder.
-- Don't edit `~/.meta-skill-loop/` by hand; use `msl`. The one exception is a pending merge in `…/merge/`.
-- `~/.meta-skill-loop` is private: feedback and copies of conversations. Never paste it or copy it anywhere public.
 - If `msl` can't write (a sandbox blocks writes outside the project), show the command you would have run and ask the user to allow it or run it themselves. In Codex, they can allow it once in `~/.codex/config.toml`: `writable_roots = ["<their home>/.meta-skill-loop"]` under `[sandbox_workspace_write]`.

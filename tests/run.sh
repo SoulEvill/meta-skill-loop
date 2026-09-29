@@ -463,15 +463,16 @@ msl discard pending >/dev/null
 msl update pending --no-fetch >/dev/null
 has "a fresh review applies" "$(msl update pending --apply)" "v3: pending now runs upstream 222222222222"
 
-# A version is never claimed if git can't record it.
-msl git tooling config commit.gpgsign true && msl git tooling config gpg.program false
+# A version is never claimed if git can't record it (here: a hook that rejects every commit).
+mkdir -p "$HOME/hooks" && printf '#!/bin/sh\nexit 1\n' > "$HOME/hooks/pre-commit" && chmod +x "$HOME/hooks/pre-commit"
+msl git tooling config core.hooksPath "$HOME/hooks"
 echo "unsigned edit" >> "$HOME/.agents/skills/tooling/SKILL.md"
 tfid="$(echo x | msl feedback add tooling -t signing | awk 'NR == 1 { print $1 }')"
 check "keep fails when git can't commit" fails msl keep tooling -m signed --fixes "$tfid"
 has "no version was claimed" "$(version_of tooling)" "v12*"
 check "the feedback stays open" grep -q '^status: open$' "$HOME/.meta-skill-loop/skills/tooling/feedback/$tfid.md"
 has "the edit is still live" "$(cat "$HOME/.agents/skills/tooling/SKILL.md")" "unsigned edit"
-msl git tooling config --unset commit.gpgsign && msl git tooling config --unset gpg.program
+msl git tooling config --unset core.hooksPath && rm -rf "$HOME/hooks"
 msl discard tooling >/dev/null
 
 # --fixes must name feedback on the skill being kept.
@@ -568,13 +569,37 @@ echo "feedback on a skill that isn't managed yet"
 skill "$HOME/.agents/skills/newbie" newbie "Be new."
 before="$(cat "$HOME/.agents/skills/newbie/SKILL.md")"
 check "a rejected entry doesn't start managing the skill" fails_on "" msl feedback add newbie -t t
+check "nor does a version it can't have yet" fails_on x msl feedback add newbie -t t --version v3
+check "nor a missing session file" fails_on x msl feedback add newbie -t t --session "$HOME/nope.jsonl"
+check "nor a path instead of a name" fails_on x msl feedback add "$HOME/.agents/skills/newbie" -t t
 check "(still not managed)" fails msl status newbie
 out="$(echo x | msl feedback add newbie -t "first feedback")"
-has "feedback on an installed, unmanaged skill starts managing it" "$out" "now managing it: added newbie (local) as v1"
+has "feedback on an installed, unmanaged skill starts managing it" "$out" "added newbie (local) as v1"
 check "the entry id is still the first line" grep -Eq '^fb-[a-z0-9]{6}-[0-9]{3} logged for newbie' <<<"$out"
 check "the skill itself is untouched" test "$(cat "$HOME/.agents/skills/newbie/SKILL.md")" = "$before"
 has "and the feedback is on it" "$(msl status newbie)" "newbie"
 msl remove newbie >/dev/null && rm -rf "$HOME/.agents/skills/newbie"
+# Two different skills with the same name: say which exist, manage neither, log nothing.
+mkdir -p "$HOME/proj03" && git -C "$HOME/proj03" init -q
+skill "$HOME/proj03/.claude/skills/qux" qux "The project's qux."
+skill "$HOME/.agents/skills/qux" qux "The user's qux."
+out="$(cd "$HOME/proj03" && echo x | msl feedback add qux -t t 2>&1 || true)"
+has "an ambiguous name is refused, naming both skills" "$out" "proj03/.claude/skills/qux"
+has "(and the other)" "$out" "/.agents/skills/qux"
+check "neither is managed" fails msl status qux
+rm -rf "$HOME/proj03" "$HOME/.agents/skills/qux"
+# Identical copies are one skill, not an ambiguity.
+skill "$HOME/.agents/skills/twin" twin "Same."
+skill "$HOME/.cursor/skills/twin" twin "Same."
+has "identical copies are fine: it's managed, with a note about the copy" "$(echo x | msl feedback add twin -t t)" "is a separate copy of it"
+msl remove twin >/dev/null && rm -rf "$HOME/.agents/skills/twin" "$HOME/.cursor/skills/twin"
+# A user who signs every commit: msl's own repos don't try to.
+git config --global commit.gpgsign true && git config --global tag.gpgsign true && git config --global gpg.program false
+skill "$HOME/.agents/skills/signed" signed "Signed user."
+has "managing works when the user's git signs commits" "$(echo x | msl feedback add signed -t t)" "added signed (local) as v1"
+check "and the version exists" test "$(version_of signed)" = v1
+git config --global --unset commit.gpgsign && git config --global --unset tag.gpgsign && git config --global --unset gpg.program
+msl remove signed >/dev/null && rm -rf "$HOME/.agents/skills/signed"
 
 echo "msl runs from the installed skill"
 hub="$HOME/.agents/skills/meta-skill-loop/scripts/msl"

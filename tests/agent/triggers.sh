@@ -4,7 +4,8 @@
 # that shouldn't? Each prompt runs as a fresh conversation, RUNS times; a prompt passes
 # when its trigger rate is on the right side of 0.5.
 #
-#   tests/agent/triggers.sh [claude-code]       # needs `claude`, `jq`, and a key or login
+#   tests/agent/triggers.sh [claude-code]       # needs `claude`, `jq`, and ANTHROPIC_API_KEY
+#                                               # (it runs in a throwaway HOME, so a login there isn't seen)
 #   RUNS=1 tests/agent/triggers.sh              # quicker, noisier (default: 3)
 #
 # Only Claude Code is wired up: its stream-json output shows whether the skill was
@@ -22,7 +23,8 @@ mkdir -p "$PROJECT" "$HOME/runs" && (cd "$PROJECT" && git init -q)
 skills_dir="$HOME/.claude/skills"
 
 # The skill as users install it, plus the skills the prompts talk about.
-npx -y skills@latest add "$REPO" --skill meta-skill-loop --agent claude-code -g -y >/dev/null 2>&1
+npx -y skills@latest add "$REPO" --skill meta-skill-loop --agent claude-code -g -y >/dev/null 2>&1 \
+  || { echo "triggers.sh: installing the skill with the skills CLI failed" >&2; exit 1; }
 for s in greeting pr-review grill-me; do
   mkdir -p "$skills_dir/$s" && cp "$REPO/tests/fixtures/$s/SKILL.md" "$skills_dir/$s/"
 done

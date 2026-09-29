@@ -55,7 +55,9 @@ You can also ask:
 - **Upgrading from 0.2** (three skills): remove the two old ones,
   `npx skills@latest remove meta-skill-feedback meta-skill-refine -g`, and, if you added
   it, the line that mentions meta-skill-feedback from your agent's rules (Cursor User
-  Rules, `~/.claude/CLAUDE.md`, or `~/.codex/AGENTS.md`).
+  Rules, `~/.claude/CLAUDE.md`, or `~/.codex/AGENTS.md`). An allow rule for
+  `~/.meta-skill-loop/bin/msl` no longer applies: the skill now runs its own
+  `scripts/msl`, and your tool asks once for that instead.
 
 How it works: [docs/design.md](docs/design.md). Contributing: [AGENTS.md](AGENTS.md).
 

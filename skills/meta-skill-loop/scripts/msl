@@ -189,6 +189,14 @@ all_skills() {
 }
 
 # Every place a skill named $1 is installed, links included: "path TAB physical-dir".
+# One physical folder per distinct skill installed under a name: links to a folder and
+# identical copies count once, so two or more lines mean different skills share the name.
+same_name_skills() { # name
+  install_paths "$1" | cut -f2 | sort -u | while IFS= read -r p; do
+    printf '%s\t%s\n' "$(dir_hash "$p")" "$p"
+  done | sort -t "$TAB" -u -k1,1 | cut -f2
+}
+
 install_paths() {
   skill_roots | while IFS= read -r root; do
     [ -d "$root" ] || continue
@@ -273,7 +281,9 @@ source_of() { # name -> "url (path)" for display
 # ------------------------------------------------------------ per-skill git ---
 
 g() {
+  # msl's own bookkeeping repos: never signed, whatever the user's git config says.
   git -c user.name="meta-skill-loop" -c user.email="msl@localhost" \
+    -c commit.gpgsign=false -c tag.gpgsign=false \
     -c core.autocrlf=false -c advice.detachedHead=false --git-dir="$GD" "$@"
 }
 
@@ -828,7 +838,7 @@ cmd_feedback() {
 }
 
 feedback_add() {
-  local name="${1:-}" title="" severity="P2" tool="" about="" session="" ver id file body src dest added=""
+  local name="${1:-}" title="" severity="P2" tool="" about="" session="" ver id file body src dest added="" others tmp
   [ -n "$name" ] || die "usage: msl feedback add <name> -t <title> [--severity P0|P1|P2|P3|nit] [--tool T] [--version vN] [--session FILE|none] < body"
   shift
   while [ $# -gt 0 ]; do
@@ -850,8 +860,20 @@ feedback_add() {
   fi
   body="$(cat)"
   [ -n "$(printf '%s' "$body" | tr -d '[:space:]')" ] || die "feedback body is empty (pass it on stdin)"
-  # Feedback on a skill that isn't managed yet starts managing it (the skill isn't modified).
-  is_managed "$name" || added="$(cmd_add "$name")"
+  # Everything that can reject the entry is checked before anything is managed or written.
+  case "$name" in */*) die "feedback add takes a skill's name, not a path (to manage a folder by path: msl add <path>)" ;; esac
+  case "$session" in ''|none) ;; *) [ -f "$session" ] || die "no such session file: $session" ;; esac
+  # Feedback on a skill that isn't managed yet starts managing it (the skill isn't modified),
+  # unless the name is ambiguous: then the user has to say which skill they mean.
+  if ! is_managed "$name"; then
+    [ -z "$about" ] || [ "$about" = v1 ] || die "$name isn't managed yet, so its only version will be v1 (got --version $about)"
+    others="$(same_name_skills "$name")"
+    [ "$(printf '%s\n' "$others" | grep -c . || true)" -le 1 ] ||
+      die "different skills are named $name:$NL$(printf '%s\n' "$others" | while IFS= read -r o; do printf '  %s\n' "$(tilde "$o")"; done)${NL}Ask the user which one they mean, then run msl add <its path> and log the feedback again."
+    tmp="$(mktemp)"
+    cmd_add "$name" > "$tmp"   # in this shell, so any failure stops here, before the entry is written
+    added="$(cat "$tmp")"; rm -f "$tmp"
+  fi
   use_skill "$name"
 
   if [ -n "$about" ]; then
@@ -892,7 +914,7 @@ feedback_add() {
     printf -- '---\n%s\n' "$body"
   } > "$file"
   printf '%s logged for %s (%s)\n' "$id" "$name" "$ver"
-  [ -z "$added" ] || printf 'now managing it: %s\n' "$added"
+  [ -z "$added" ] || printf '%s\n' "$added"
   if [ -n "$session" ]; then
     printf 'conversation saved: %s\n' "$session"
   else

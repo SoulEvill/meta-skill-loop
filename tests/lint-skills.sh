@@ -15,7 +15,9 @@ for f in "$REPO"/skills/*/SKILL.md; do
   # The spec's fields every tool accepts: name and description (required), and license,
   # compatibility, metadata (optional). Tool-specific fields (allowed-tools, paths, …) vary.
   keys="$(printf '%s\n' "$fm" | grep -E '^[A-Za-z_-]+:' | cut -d: -f1 | sort | tr '\n' ' ')"
-  case " $keys" in *" description "*" name "*) ;; *) bad "$dir" "frontmatter needs name and description (found: $keys)" ;; esac
+  for k in name description; do
+    case " $keys" in *" $k "*) ;; *) bad "$dir" "frontmatter needs $k (found: $keys)" ;; esac
+  done
   for k in $keys; do
     case "$k" in name|description|license|compatibility|metadata) ;; *) bad "$dir" "frontmatter field '$k' isn't in the Agent Skills spec's portable set (name, description, license, compatibility, metadata)" ;; esac
   done
