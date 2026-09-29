@@ -35,7 +35,7 @@ Turn a skill's accumulated feedback into a small, approved change, and record it
    For feedback the user decides not to act on, run `msl feedback mark <id> declined`.
 
 6. **Close out.** Summarize what changed and what's still open.
-   - If the skill has an upstream (kind `skills-cli` in `msl status`), mention two things. Future upstream updates will be merged with this change for their review rather than overwriting it. And if the change would help everyone, it's worth sending to the skill's source as a PR or issue, with the evidence summarized and anything private removed.
+   - If the skill has an upstream (kind `skills-cli` in `msl status`), mention two things. Future upstream updates will be merged with this change for their review rather than overwriting it. And if the change would help everyone, they can send it to the skill's source as an issue or PR ("send this upstream").
 
 ## Rules
 

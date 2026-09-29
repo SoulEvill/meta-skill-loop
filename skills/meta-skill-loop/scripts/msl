@@ -972,6 +972,10 @@ cmd_diff() {
     --upstream)
       has_upstream || die "$name has no upstream"
       printf '# upstream %s -> your version %s\n' "$(latest_upstream_rev)" "$(current_version)"
+      # Where the change would go, so it can be sent upstream as an issue or PR.
+      a="$(meta_get "$name" source_path)"
+      printf '# source: %s, folder %s (apply there with: git apply%s)\n' \
+        "$(meta_get "$name" source_url)" "${a:-.}" "${a:+ --directory=$a}"
       g diff upstream mine ;;
     --saved)
       g rev-parse -q --verify refs/stash >/dev/null || die "no saved edits for $name"

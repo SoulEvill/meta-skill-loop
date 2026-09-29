@@ -39,6 +39,7 @@ You can also ask:
 | "meta-skill-loop status" | Your skills, their versions, and open feedback. |
 | "show versions of pr-review" | Each version, what changed, and the feedback it fixed. |
 | "update pr-review" | For a skill you installed with `npx skills`: takes its author's new version and keeps your edits. You review it first. |
+| "send this upstream" | Offers your change to the skill's author as a GitHub issue (or a pull request, if you ask). You approve the exact text first. |
 
 ## Good to know
 

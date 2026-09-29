@@ -3,9 +3,10 @@
 # way users do, then drive the agent with plain-language prompts and check the
 # outcomes on disk (not tool-call telemetry), so the same checks work for any agent.
 #
-#   tests/agent/run.sh claude-code   # needs `claude`, `jq`, and ANTHROPIC_API_KEY (or a login)
+#   tests/agent/run.sh claude-code   # needs `claude` and ANTHROPIC_API_KEY (or a login)
 #   tests/agent/run.sh cursor        # experimental: needs `cursor-agent` and CURSOR_API_KEY
 #   tests/agent/run.sh codex         # experimental: needs `codex` and OPENAI_API_KEY
+#   (all of them also need `jq`)
 #
 # Model output varies; a failure here is a signal to look at the transcript in
 # $HOME/transcripts, not proof of a bug. Costs a few model calls per run.
@@ -61,6 +62,11 @@ echo "install ($AGENT)"
 # shellcheck disable=SC2086
 npx -y skills@latest add "$REPO" --skill meta-skill-loop $agents -g -y >/dev/null 2>&1
 mkdir -p "$skills_dir/greeting" && cp "$REPO/tests/fixtures/greeting/SKILL.md" "$skills_dir/greeting/"
+# Register the fixture as if the skills CLI had installed it from GitHub, so it has an upstream.
+lockf="$HOME/.agents/.skill-lock.json"
+[ -f "$lockf" ] || { mkdir -p "$HOME/.agents" && printf '{"version":3,"skills":{}}' > "$lockf"; }
+jq '.skills.greeting = {"source":"example-org/example-skills","sourceUrl":"https://github.com/example-org/example-skills.git","skillPath":"skills/greeting/SKILL.md","skillFolderHash":"fixture"}' \
+  "$lockf" > "$lockf.new" && mv "$lockf.new" "$lockf"
 if [ -f "$skills_dir/meta-skill-loop/SKILL.md" ]; then ok "skills installed in $skills_dir"; else bad "skills installed"; fi
 
 echo "feedback on a skill, first use (sets up the workspace itself)"
@@ -119,6 +125,13 @@ if [ "$AGENT" = claude-code ]; then
   if ! grep -q '!!!' "$skills_dir/greeting/SKILL.md" && grep -Eq 'greeting +[a-z-]+ +v2 +0 +clean' <<<"$st"; then
     ok "approved edit kept as v2, its feedback applied"; else bad "approved edit kept as v2, its feedback applied" "$(last).jsonl
 $st"; fi
+
+  echo "send upstream: draft for approval, post nothing"
+  out="$(ask "send the greeting skill's change upstream as an issue. Just show me the draft; don't post anything.")"
+  if grep -qF 'example-org/example-skills' <<<"$out" && grep -qF '!!!' <<<"$out"; then
+    ok "draft names the source repo and carries the change"; else bad "draft names the source repo and carries the change" "$(last).jsonl"; fi
+  ran="$(jq -rR 'fromjson? | select(.type == "assistant") | .message.content[]? | select(.type == "tool_use") | .input.command // empty' "$(last).jsonl")"
+  if ! grep -Eq 'gh (issue|pr) create|gh repo fork|git push' <<<"$ran"; then ok "nothing posted"; else bad "nothing posted" "$(last).jsonl"; fi
 fi
 
 [ "$fail" = 0 ] && echo "agent tests ($AGENT): ok"

@@ -1,6 +1,6 @@
 ---
 name: meta-skill-loop
-description: Feedback and version history for agent skills. Use when the user asks to log or record feedback on a skill ("log feedback on pr-review", "feedback on grill-me", "record this for the skill"), to refine or improve a skill from its feedback, to see their skills' status or open feedback, to see a skill's versions or what changed, to undo a change or go back to a version, to keep or discard edits to a skill, to update a skill from upstream, to add or stop managing skills, or says "meta-skill-loop" or "msl". Log feedback only when the user explicitly asks to; don't suggest logging feedback otherwise.
+description: Feedback and version history for agent skills. Use when the user asks to log or record feedback on a skill ("log feedback on pr-review", "feedback on grill-me", "record this for the skill"), to refine or improve a skill from its feedback, to see their skills' status or open feedback, to see a skill's versions or what changed, to undo a change or go back to a version, to keep or discard edits to a skill, to update a skill from upstream, to send a skill change upstream as an issue or pull request, to add or stop managing skills, or says "meta-skill-loop" or "msl". Log feedback only when the user explicitly asks to; don't suggest logging feedback otherwise.
 ---
 
 # meta-skill-loop
@@ -28,6 +28,10 @@ Read `references/feedback.md` in this skill's folder (usually `~/.agents/skills/
 ## Refine: "refine pr-review", "improve grill-me from its feedback"
 
 Read `references/refine.md` in this skill's folder (usually `~/.agents/skills/meta-skill-loop/references/refine.md`) and follow it.
+
+## Send upstream: "send this upstream", "open an issue for pr-review's author", "make a PR with my change"
+
+Read `references/contribute.md` in this skill's folder (usually `~/.agents/skills/meta-skill-loop/references/contribute.md`) and follow it.
 
 ## Status: "meta-skill-loop", "status", "which skills have feedback?"
 

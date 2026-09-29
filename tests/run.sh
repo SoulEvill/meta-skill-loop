@@ -255,6 +255,15 @@ has "add detects the skills CLI" "$(msl add grilling)" "(skills-cli, from https:
 check "source is recorded as url and path" grep -q '^source_path: skills/grilling$' "$HOME/.meta-skill-loop/skills/grilling/skill.yaml"
 sed 's/Ask the whole frontier in one round./Ask at most 3 questions per round./' "$HOME/.agents/skills/grilling/SKILL.md" > "$HOME/x" && mv "$HOME/x" "$HOME/.agents/skills/grilling/SKILL.md"
 msl keep grilling -m "3 questions" >/dev/null
+out="$(msl diff grilling --upstream)"
+has "diff --upstream names the source and where to apply" "$out" "# source: https://github.com/acme/skills.git, folder skills/grilling (apply there with: git apply --directory=skills/grilling)"
+# Sending it upstream: the output, header included, applies to the source repo's layout.
+mkdir -p "$HOME/acme/skills/grilling" && git -C "$HOME/acme" init -q
+printf -- '---\nname: grilling\ndescription: test skill grilling\n---\n\n# grilling\nAsk the whole frontier in one round.\nKeep going until done.\n' > "$HOME/acme/skills/grilling/SKILL.md"
+printf '%s\n' "$out" > "$HOME/change.patch"
+check "the change applies upstream with the printed command" git -C "$HOME/acme" apply --directory=skills/grilling "$HOME/change.patch"
+has "and it is exactly the refinement" "$(cat "$HOME/acme/skills/grilling/SKILL.md")" "Ask at most 3 questions per round."
+rm -rf "$HOME/acme" "$HOME/change.patch"
 # The skills CLI installs a new upstream version over the live folder.
 skill "$HOME/.agents/skills/grilling" grilling "Ask the whole frontier in one round.
 Keep going until done.
