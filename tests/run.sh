@@ -583,7 +583,7 @@ msl remove newbie >/dev/null && rm -rf "$HOME/.agents/skills/newbie"
 mkdir -p "$HOME/proj03" && git -C "$HOME/proj03" init -q
 skill "$HOME/proj03/.claude/skills/qux" qux "The project's qux."
 skill "$HOME/.agents/skills/qux" qux "The user's qux."
-out="$(cd "$HOME/proj03" && echo x | msl feedback add qux -t t 2>&1 || true)"
+out="$(cd "$HOME/proj03" || exit 1; echo x | msl feedback add qux -t t 2>&1)" || true
 has "an ambiguous name is refused, naming both skills" "$out" "proj03/.claude/skills/qux"
 has "(and the other)" "$out" "/.agents/skills/qux"
 check "neither is managed" fails msl status qux
