@@ -271,6 +271,15 @@ has "add detects the skills CLI" "$(msl add grilling)" "(skills-cli, from https:
 check "source is recorded as url and path" grep -q '^source_path: skills/grilling$' "$HOME/.meta-skill-loop/skills/grilling/skill.yaml"
 sed 's/Ask the whole frontier in one round./Ask at most 3 questions per round./' "$HOME/.agents/skills/grilling/SKILL.md" > "$HOME/x" && mv "$HOME/x" "$HOME/.agents/skills/grilling/SKILL.md"
 msl keep grilling -m "3 questions" >/dev/null
+out="$(msl diff grilling --upstream)"
+has "diff --upstream names the source and where to apply" "$out" "# source: https://github.com/acme/skills.git, folder skills/grilling (apply there with: git apply --directory=skills/grilling)"
+# Sending it upstream: the output, header included, applies to the source repo's layout.
+mkdir -p "$HOME/acme/skills/grilling" && git -C "$HOME/acme" init -q
+printf -- '---\nname: grilling\ndescription: test skill grilling\n---\n\n# grilling\nAsk the whole frontier in one round.\nKeep going until done.\n' > "$HOME/acme/skills/grilling/SKILL.md"
+printf '%s\n' "$out" > "$HOME/change.patch"
+check "the change applies upstream with the printed command" git -C "$HOME/acme" apply --directory=skills/grilling "$HOME/change.patch"
+has "and it is exactly the refinement" "$(cat "$HOME/acme/skills/grilling/SKILL.md")" "Ask at most 3 questions per round."
+rm -rf "$HOME/acme" "$HOME/change.patch"
 # The skills CLI installs a new upstream version over the live folder.
 skill "$HOME/.agents/skills/grilling" grilling "Ask the whole frontier in one round.
 Keep going until done.
@@ -330,6 +339,33 @@ lock plain 333333333333
 has "a second update without refinements also applies directly" "$(msl update plain --no-fetch)" "you had no refinements to merge"
 has "second fast-forward is live" "$(cat "$HOME/.agents/skills/plain/SKILL.md")" "v three"
 check "own skills have no upstream" fails msl update grill-me
+
+echo "send upstream: the patch carries binary files; a PR starts from upstream, not the fork"
+skill "$HOME/.agents/skills/assets" assets "Use the logo."
+lock assets 444444444444
+msl add assets >/dev/null
+printf 'PNG\000\001\002\377bytes' > "$HOME/.agents/skills/assets/logo.png"
+echo "Put the logo first." >> "$HOME/.agents/skills/assets/SKILL.md"
+msl keep assets -m "logo" >/dev/null
+msl diff assets --upstream > "$HOME/change.patch"
+has "a binary change is carried in full" "$(cat "$HOME/change.patch")" "GIT binary patch"
+# The source repo, as published, and the user's existing fork with an unrelated commit on it.
+up="$HOME/acme-up"; fork="$HOME/acme-fork"; gc() { git -c user.name=t -c user.email=t@t "$@"; }
+mkdir -p "$up/skills/assets" && git -C "$up" init -q && git -C "$up" symbolic-ref HEAD refs/heads/main
+printf -- '---\nname: assets\ndescription: test skill assets\n---\n\n# assets\nUse the logo.\n' > "$up/skills/assets/SKILL.md"
+git -C "$up" add -A && gc -C "$up" commit -qm published
+git clone -q "$up" "$fork" && git -C "$fork" remote rename origin upstream
+echo "unrelated" > "$fork/NOTES.md" && git -C "$fork" add -A && gc -C "$fork" commit -qm "unrelated fork commit"
+# contribute.md's PR steps, minus gh: branch from upstream's default branch, apply, commit.
+git -C "$fork" fetch -q upstream main && git -C "$fork" switch -q -c msl-change upstream/main
+check "the patch applies with the printed command" git -C "$fork" apply --directory=skills/assets "$HOME/change.patch"
+git -C "$fork" add -A
+gc -C "$fork" commit -qm "logo first" >/dev/null 2>&1 || true  # if nothing applied, the checks below report it
+has "the PR branch carries only the change's commit" "$(git -C "$fork" log --oneline upstream/main..HEAD | wc -l | tr -d ' ')" "1"
+lacks "and none of the fork's unrelated files" "$(git -C "$fork" diff --stat upstream/main..HEAD)" "NOTES.md"
+check "the binary file arrives byte for byte" cmp "$HOME/.agents/skills/assets/logo.png" "$fork/skills/assets/logo.png"
+has "with the text change too" "$(cat "$fork/skills/assets/SKILL.md")" "Put the logo first."
+rm -rf "$up" "$fork" "$HOME/change.patch"
 
 echo "skill inside a git repo"
 mkdir -p "$HOME/work" && git -C "$HOME/work" init -q

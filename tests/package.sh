@@ -20,7 +20,7 @@ npx -y skills@latest add "$REPO" --skill meta-skill-loop --agent cursor claude-c
 s="$HOME/.agents/skills/meta-skill-loop"
 if [ -f "$s/SKILL.md" ] && [ ! -L "$s" ]; then ok "installed ~/.agents/skills/meta-skill-loop"; else bad "installed ~/.agents/skills/meta-skill-loop"; fi
 if [ -f "$HOME/.claude/skills/meta-skill-loop/SKILL.md" ]; then ok "Claude Code sees it"; else bad "Claude Code sees it"; fi
-for f in references/feedback.md references/refine.md scripts/msl; do
+for f in references/feedback.md references/refine.md references/contribute.md scripts/msl; do
   if [ -f "$s/$f" ]; then ok "installed with $f"; else bad "installed with $f"; fi
 done
 # A skill from another source, installed the same way, to manage below.

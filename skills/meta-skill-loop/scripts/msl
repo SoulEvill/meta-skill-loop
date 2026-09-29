@@ -982,7 +982,12 @@ cmd_diff() {
     --upstream)
       has_upstream || die "$name has no upstream"
       printf '# upstream %s -> your version %s\n' "$(latest_upstream_rev)" "$(current_version)"
-      g diff upstream mine ;;
+      # Where the change would go, so it can be sent upstream as an issue or PR.
+      a="$(meta_get "$name" source_path)"
+      printf '# source: %s, folder %s (apply there with: git apply%s)\n' \
+        "$(meta_get "$name" source_url)" "${a:-.}" "${a:+ --directory=$a}"
+      # --binary: a changed image or other asset is carried in full, so the patch applies.
+      g diff --binary upstream mine ;;
     --saved)
       g rev-parse -q --verify refs/stash >/dev/null || die "no saved edits for $name"
       printf '# your version %s -> the last saved live edits (what msl restore brings back)\n' "$(current_version)"
