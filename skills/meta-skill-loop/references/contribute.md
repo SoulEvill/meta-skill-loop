@@ -13,14 +13,19 @@ Offer the user's refinements of a skill back to its source, as an issue or a pul
 
 3. **Draft it, and show it.**
    - **Title:** the problem, in one line.
-   - **Body:** what went wrong, in your own words from the feedback (`msl feedback list <name> --all`); the change and why it helps; the patch in a `diff` block.
+   - **Body:** what went wrong, in your own words from the feedback (`msl feedback list <name> --all`); the change and why it helps; the patch in a `diff` block. If the patch has binary files (`GIT binary patch`), prefer a PR, or have the user attach those files to the issue.
    - Never paste feedback entries or conversation copies, and leave out anything private: names, paths, company or customer details. The repository may be public.
    - Show the exact title and body. Post only after the user approves them.
 
 4. **Post it.** `<owner>/<repo>` comes from the source URL in the diff header.
    - **Issue, with `gh`:** `gh issue create --repo <owner>/<repo> --title "<title>" --body-file <file>`.
    - **Issue, without `gh`:** give the user a link to open and submit: `https://github.com/<owner>/<repo>/issues/new?title=<title>&body=<body>`, both URL-encoded. If the link would be over about 6,000 characters, leave the patch out of the link and give it to the user to paste.
-   - **Pull request:** in a temporary folder, `gh repo fork <owner>/<repo> --clone`, then in the clone `git switch -c <short-branch-name>`, save the patch to a file, and apply it with the command from the diff header (`git apply --directory=<folder> <file>`). Commit with the title as the message, `git push -u origin <branch>`, and `gh pr create --repo <owner>/<repo> --title "<title>" --body-file <file>`. If the patch doesn't apply, stop and offer an issue instead.
+   - **Pull request,** in a temporary folder:
+     1. `gh repo fork <owner>/<repo> --clone`, and go into the clone. If the user already has a fork, this reuses it, and its branches may carry unrelated commits.
+     2. So start from upstream, not from the fork: `base="$(gh repo view <owner>/<repo> --json defaultBranchRef -q .defaultBranchRef.name)"`, `git fetch upstream "$base"`, `git switch -c <short-branch-name> "upstream/$base"`.
+     3. Save the patch to a file and apply it with the command from the diff header (`git apply --directory=<folder> <file>`). If it doesn't apply, stop and offer an issue instead.
+     4. Commit with the title as the message. Before pushing, check that the PR would carry exactly this change: `git log --oneline "upstream/$base"..HEAD` shows only your commit, and `git diff --stat "upstream/$base"..HEAD` touches only the skill's folder. If not, stop and tell the user.
+     5. `git push -u origin <short-branch-name>`, then `gh pr create --repo <owner>/<repo> --base "$base" --head "$(gh api user -q .login):<short-branch-name>" --title "<title>" --body-file <file>`.
    - **Source not on GitHub:** give the user the patch and the source URL.
 
 5. **Report the link.** The user's skill and their meta-skill-loop history don't change. If the author later publishes the change, `msl update` merges it cleanly, since both sides already agree.
