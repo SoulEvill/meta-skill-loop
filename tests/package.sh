@@ -26,16 +26,17 @@ done
 # A skill from another source, installed the same way, to manage below.
 npx -y skills@latest add "$REPO/tests/fixtures" --skill greeting --agent cursor claude-code codex -g -y >/dev/null 2>&1 || bad "skills CLI install of the fixture"
 
-echo "first use from the installed skill"
-bash "$HOME/.agents/skills/meta-skill-loop/scripts/msl" init >/dev/null
-M="$HOME/.meta-skill-loop/bin/msl"
-if [ -x "$M" ]; then ok "launcher created"; else bad "launcher created"; fi
-if "$M" version >/dev/null; then ok "launcher runs msl"; else bad "launcher runs msl"; fi
-out="$("$M" add greeting)"
+echo "first use from the installed skill (the way the agent runs it: its script, by path)"
+msl() { bash "$HOME/.agents/skills/meta-skill-loop/scripts/msl" "$@"; }
+if msl version >/dev/null; then ok "the installed script runs"; else bad "the installed script runs"; fi
+# Through the Claude Code link too: every tool runs the same folder's script.
+if bash "$HOME/.claude/skills/meta-skill-loop/scripts/msl" version >/dev/null; then ok "and through the Claude Code link"; else bad "and through the Claude Code link"; fi
+out="$(msl add greeting)"
+if [ -f "$HOME/.meta-skill-loop/workspace.yaml" ]; then ok "the first command set up the workspace"; else bad "the first command set up the workspace"; fi
 if grep -qF "as v1" <<<"$out"; then ok "a skill installed by the CLI can be managed"; else bad "a skill installed by the CLI can be managed" "$out"; fi
 if grep -qF "a link to it" <<<"$out" && ! grep -qF "msl link" <<<"$out"; then ok "the Claude Code link is recognized; nothing to link"; else bad "the Claude Code link is recognized; nothing to link" "$out"; fi
-printf -- '- observed: test\n' | "$M" feedback add greeting -t test --tool ci >/dev/null
-out="$("$M" status greeting)"
+printf -- '- observed: test\n' | msl feedback add greeting -t test --tool ci >/dev/null
+out="$(msl status greeting)"
 if grep -qE 'greeting +[a-z-]+ +v1 +1 ' <<<"$out"; then ok "feedback recorded"; else bad "feedback recorded" "$out"; fi
 
 [ "$fail" = 0 ] && echo "package: ok"

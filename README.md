@@ -25,6 +25,9 @@ script it uses; allow it.
 
 ## Use
 
+Ask your agent in plain words, as below. To be sure it uses meta-skill-loop, start with
+`/meta-skill-loop` (Cursor, Claude Code) or `$meta-skill-loop` (Codex).
+
 1. **Use your skills as usual.** When one gets something wrong, ask to log it:
    "log feedback on pr-review: it buried the real bug under style nits."
    It's logged only when you ask.
@@ -52,7 +55,9 @@ You can also ask:
 - **Upgrading from 0.2** (three skills): remove the two old ones,
   `npx skills@latest remove meta-skill-feedback meta-skill-refine -g`, and, if you added
   it, the line that mentions meta-skill-feedback from your agent's rules (Cursor User
-  Rules, `~/.claude/CLAUDE.md`, or `~/.codex/AGENTS.md`).
+  Rules, `~/.claude/CLAUDE.md`, or `~/.codex/AGENTS.md`). An allow rule for
+  `~/.meta-skill-loop/bin/msl` no longer applies: the skill now runs its own
+  `scripts/msl`, and your tool asks once for that instead.
 
 How it works: [docs/design.md](docs/design.md). Contributing: [AGENTS.md](AGENTS.md).
 

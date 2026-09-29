@@ -1,6 +1,6 @@
 # Log feedback
 
-Capture one piece of feedback about a skill as an entry, then get back to what the user was doing. Do this only because the user asked. Capturing never changes the skill: improving it is a separate step (`refine.md`). Run `msl` as SKILL.md says.
+Capture one piece of feedback about a skill as an entry, then get back to what the user was doing. Do this only because the user asked. Capturing never changes the skill: improving it is a separate step (`refine.md`). `msl` is this skill's script, run as SKILL.md says.
 
 ## Steps
 
@@ -9,9 +9,7 @@ Capture one piece of feedback about a skill as an entry, then get back to what t
    - If the user hasn't said what went wrong, in this request or just before it, ask in one line. Don't build the entry from earlier turns on your own.
    - If that skill only hands off to another skill (for example, "use the grilling skill"), log the feedback on the skill whose instructions actually produced the behavior.
 
-2. **Make sure it's managed.** Run `msl status <name>`. If it isn't managed, run `msl add <name>` and tell the user in one line that it's now managed. The skill itself is not modified. If `msl add` finds no skill by that name (a typo, or not installed), run `msl add` with no name and ask the user which one they meant.
-
-3. **Write the entry.**
+2. **Write the entry.**
    - **Title:** one line naming the problem, e.g. "Buries the real bug under style nits".
    - **Severity:**
 
@@ -34,10 +32,10 @@ Capture one piece of feedback about a skill as an entry, then get back to what t
 
    Leave out secrets, credentials, tokens, customer data, and anything the user wouldn't want stored. When unsure, summarize instead of quoting.
 
-4. **Log it.** Pipe the body to `msl feedback add` with the title, severity, and `--tool` (the agent you're running in: `cursor`, `codex`, `claude-code`, or another name):
+3. **Log it.** Pipe the body to `msl feedback add` with the title, severity, and `--tool` (the agent you're running in: `cursor`, `codex`, `claude-code`, or another name):
 
    ```sh
-   ~/.meta-skill-loop/bin/msl feedback add pr-review -t "Buries the real bug under style nits" --severity P2 --tool cursor <<'EOF'
+   msl feedback add pr-review -t "Buries the real bug under style nits" --severity P2 --tool cursor <<'EOF'
    ## Asked
    "review PR 482"
 
@@ -55,9 +53,9 @@ Capture one piece of feedback about a skill as an entry, then get back to what t
    EOF
    ```
 
-   msl records which version of the skill the feedback is about. If it's about an earlier version (for example, a change the user just undid), add `--version vN`.
+   If the skill isn't managed yet, this starts managing it (the skill itself isn't modified): tell the user, and pass on any note msl prints, since each names the command that deals with it. If msl finds no skill by that name (a typo, or not installed), run `msl add` to list the installed ones and ask the user which they meant. If it says different skills share the name, ask which one, run `msl add <its path>`, and log again. msl records which version of the skill the feedback is about. If it's about an earlier version (for example, a change the user just undid), add `--version vN`.
 
-5. **Confirm and continue.** Report the entry id and the skill in one line ("Logged fb-k3x9a2-012 for pr-review."). If the user also wants the current task redone the right way, do it now. The feedback is recorded either way.
+4. **Confirm and continue.** Report the entry id and the skill in one line ("Logged fb-k3x9a2-012 for pr-review."). If the user also wants the current task redone the right way, do it now. The feedback is recorded either way.
 
 ## Notes
 

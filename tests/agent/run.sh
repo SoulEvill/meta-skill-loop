@@ -40,7 +40,7 @@ ask() {
       (cd "$PROJECT" && claude -p ${CONTINUE:+--continue} "$1" --allowedTools "Skill" "Read" "Edit" "Write" "Bash(ls:*)" "Bash(test:*)" \
         "Bash(bash ~/.claude/skills/meta-skill-loop/scripts/msl:*)" "Bash(bash ~/.agents/skills/meta-skill-loop/scripts/msl:*)" \
         "Bash($skills_dir/meta-skill-loop/scripts/msl:*)" "Bash(bash $skills_dir/meta-skill-loop/scripts/msl:*)" \
-        "Bash(../meta-skill-loop/scripts/msl:*)" "Bash(~/.meta-skill-loop/bin/msl:*)" "Bash($HOME/.meta-skill-loop/bin/msl:*)" \
+        "Bash(../meta-skill-loop/scripts/msl:*)" \
         --output-format stream-json --verbose < /dev/null > "$t.jsonl" 2>&1   # every tool call, for diagnosing a failure
       jq -rR 'fromjson? | select(.type == "result") | .result' "$t.jsonl") ;;
     cursor)
@@ -73,12 +73,16 @@ echo "feedback on a skill, first use (sets up the workspace itself)"
 ask "feedback on the greeting skill: it used three exclamation marks, which is too much. One is enough." >/dev/null
 fb="$(find "$HOME/.meta-skill-loop/skills/greeting/feedback" -name 'fb-*.md' 2>/dev/null | sed -n 1p)"
 if [ -n "$fb" ] && grep -qi 'exclamation' "$fb"; then ok "feedback entry written for greeting"; else bad "feedback entry written for greeting" "$(last)"; fi
-if [ -x "$HOME/.meta-skill-loop/bin/msl" ]; then ok "workspace and launcher set up on first use"; else bad "workspace set up on first use" "$(last)"; fi
+if [ -f "$HOME/.meta-skill-loop/workspace.yaml" ]; then ok "workspace set up on first use"; else bad "workspace set up on first use" "$(last)"; fi
 if grep -q '!!!' "$skills_dir/greeting/SKILL.md"; then ok "logging feedback did not edit the skill"; else bad "logging feedback did not edit the skill" "$(last)"; fi
 
 echo "status and versions"
 out="$(ask "meta-skill-loop status")"
 if grep -qi 'greeting' <<<"$out"; then ok "status mentions the managed skill"; else bad "status mentions the managed skill" "$(last)"; fi
+if [ "$AGENT" = claude-code ]; then
+  out="$(ask "/meta-skill-loop status")"
+  if grep -qi 'greeting' <<<"$out"; then ok "explicit /meta-skill-loop invocation works"; else bad "explicit /meta-skill-loop invocation works" "$(last).jsonl"; fi
+fi
 out="$(ask "show me the versions of the greeting skill")"
 if grep -q 'v1' <<<"$out"; then ok "versions shows v1"; else bad "versions shows v1" "$(last)"; fi
 
@@ -117,11 +121,11 @@ if [ "$AGENT" = claude-code ]; then
 
   echo "refine: propose, change nothing until approved, then keep"
   out="$(ask "refine the greeting skill")"
-  st="$("$HOME/.meta-skill-loop/bin/msl" status greeting)"
+  st="$(bash "$skills_dir/meta-skill-loop/scripts/msl" status greeting)"
   if grep -qF '!!!' "$skills_dir/greeting/SKILL.md" && grep -Eq 'greeting +[a-z-]+ +v1 ' <<<"$st"; then
     ok "proposed without changing the skill"; else bad "proposed without changing the skill" "$(last).jsonl"; fi
   CONTINUE=1 ask "looks good. apply it and keep it" >/dev/null
-  st="$("$HOME/.meta-skill-loop/bin/msl" status greeting)"
+  st="$(bash "$skills_dir/meta-skill-loop/scripts/msl" status greeting)"
   if ! grep -q '!!!' "$skills_dir/greeting/SKILL.md" && grep -Eq 'greeting +[a-z-]+ +v2 +0 +clean' <<<"$st"; then
     ok "approved edit kept as v2, its feedback applied"; else bad "approved edit kept as v2, its feedback applied" "$(last).jsonl
 $st"; fi

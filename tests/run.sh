@@ -24,7 +24,8 @@ lacks() {
 }
 fails() { ! "$@" >/dev/null 2>&1; }                  # command...
 fails_on() { local in="$1"; shift; ! printf '%s' "$in" | "$@" >/dev/null 2>&1; }  # stdin, command...
-msl() { "$SH" "$HOME/.meta-skill-loop/bin/msl" "$@"; }
+# The way the agent runs it: the script inside the installed skill, by its path.
+msl() { "$SH" "$HOME/.agents/skills/meta-skill-loop/scripts/msl" "$@"; }
 
 new_home() {
   # A space in the path on purpose: macOS user names and folders often have one.
@@ -32,7 +33,6 @@ new_home() {
   HOME="$(printf '%s' "$HOME" | sed 's#//*#/#g')"   # macOS TMPDIR ends in a slash
   export HOME
   unset MSL_HOME CLAUDE_CODE_SESSION_ID CLAUDECODE
-  export MSL_BASH="$SH"   # the launcher runs msl with the bash under test
   cd "$HOME"
 }
 
@@ -54,11 +54,11 @@ lock() { # name rev
 echo "install and first use"
 new_home
 skill "$HOME/.cursor/skills/grill-me" grill-me "Ask hard questions."
-# Two separate copies (a --copy install, or by hand); the launcher tests below rely on it.
+# Two separate copies (a --copy install, or by hand).
 for t in "$HOME/.agents/skills" "$HOME/.claude/skills"; do mkdir -p "$t" && cp -R "$REPO"/skills/* "$t/"; done
-"$SH" "$HOME/.agents/skills/meta-skill-loop/scripts/msl" init >/dev/null
-check "first use installs the msl launcher" test -x "$HOME/.meta-skill-loop/bin/msl"
-check "launcher runs the installed skill, not the clone" fails grep -qF "$REPO" "$HOME/.meta-skill-loop/bin/msl"
+msl status >/dev/null
+check "the first command sets up the workspace by itself" test -f "$HOME/.meta-skill-loop/workspace.yaml"
+check "no launcher or other copy of msl is written" test ! -e "$HOME/.meta-skill-loop/bin"
 check "workspace has a format version" grep -q '^format: 1$' "$HOME/.meta-skill-loop/workspace.yaml"
 check "workspace has a 6-character id" grep -Eq '^id: [a-z0-9]{6}$' "$HOME/.meta-skill-loop/workspace.yaml"
 check "first use manages nothing by itself" test -z "$(ls "$HOME/.meta-skill-loop/skills")"
@@ -129,7 +129,8 @@ check "severity defaults to P2" grep -q '^severity: P2$' "$f2"
 check "a title is required" fails_on x msl feedback add grill-me
 check "empty body rejected" fails_on "" msl feedback add grill-me -t t
 check "bad severity rejected" fails_on x msl feedback add grill-me -t t --severity huge
-check "feedback on unmanaged skill rejected" fails_on x msl feedback add nope -t t
+check "feedback on a skill that isn't installed is rejected" fails_on x msl feedback add nope -t t
+check "and nothing is left behind for it" test ! -e "$HOME/.meta-skill-loop/skills/nope"
 check "feedback --version rejects an unknown version" fails_on x msl feedback add grill-me -t t --version v9
 msl feedback mark "$(fb 002)" declined >/dev/null
 check "mark sets the status" grep -q '^status: declined$' "$f2"
@@ -462,15 +463,16 @@ msl discard pending >/dev/null
 msl update pending --no-fetch >/dev/null
 has "a fresh review applies" "$(msl update pending --apply)" "v3: pending now runs upstream 222222222222"
 
-# A version is never claimed if git can't record it.
-msl git tooling config commit.gpgsign true && msl git tooling config gpg.program false
+# A version is never claimed if git can't record it (here: a hook that rejects every commit).
+mkdir -p "$HOME/hooks" && printf '#!/bin/sh\nexit 1\n' > "$HOME/hooks/pre-commit" && chmod +x "$HOME/hooks/pre-commit"
+msl git tooling config core.hooksPath "$HOME/hooks"
 echo "unsigned edit" >> "$HOME/.agents/skills/tooling/SKILL.md"
 tfid="$(echo x | msl feedback add tooling -t signing | awk 'NR == 1 { print $1 }')"
 check "keep fails when git can't commit" fails msl keep tooling -m signed --fixes "$tfid"
 has "no version was claimed" "$(version_of tooling)" "v12*"
 check "the feedback stays open" grep -q '^status: open$' "$HOME/.meta-skill-loop/skills/tooling/feedback/$tfid.md"
 has "the edit is still live" "$(cat "$HOME/.agents/skills/tooling/SKILL.md")" "unsigned edit"
-msl git tooling config --unset commit.gpgsign && msl git tooling config --unset gpg.program
+msl git tooling config --unset core.hooksPath && rm -rf "$HOME/hooks"
 msl discard tooling >/dev/null
 
 # --fixes must name feedback on the skill being kept.
@@ -563,15 +565,47 @@ has "remove archives the data" "$(ls "$HOME/.meta-skill-loop/archive")" "tmp-ski
 check "remove stops managing it" fails msl status tmp-skill
 check "remove keeps the conversation copies" test -n "$(copied cur-id.jsonl)"
 
-echo "launcher follows the installed skill"
+echo "feedback on a skill that isn't managed yet"
+skill "$HOME/.agents/skills/newbie" newbie "Be new."
+before="$(cat "$HOME/.agents/skills/newbie/SKILL.md")"
+check "a rejected entry doesn't start managing the skill" fails_on "" msl feedback add newbie -t t
+check "nor does a version it can't have yet" fails_on x msl feedback add newbie -t t --version v3
+check "nor a missing session file" fails_on x msl feedback add newbie -t t --session "$HOME/nope.jsonl"
+check "nor a path instead of a name" fails_on x msl feedback add "$HOME/.agents/skills/newbie" -t t
+check "(still not managed)" fails msl status newbie
+out="$(echo x | msl feedback add newbie -t "first feedback")"
+has "feedback on an installed, unmanaged skill starts managing it" "$out" "added newbie (local) as v1"
+check "the entry id is still the first line" grep -Eq '^fb-[a-z0-9]{6}-[0-9]{3} logged for newbie' <<<"$out"
+check "the skill itself is untouched" test "$(cat "$HOME/.agents/skills/newbie/SKILL.md")" = "$before"
+has "and the feedback is on it" "$(msl status newbie)" "newbie"
+msl remove newbie >/dev/null && rm -rf "$HOME/.agents/skills/newbie"
+# Two different skills with the same name: say which exist, manage neither, log nothing.
+mkdir -p "$HOME/proj03" && git -C "$HOME/proj03" init -q
+skill "$HOME/proj03/.claude/skills/qux" qux "The project's qux."
+skill "$HOME/.agents/skills/qux" qux "The user's qux."
+out="$(cd "$HOME/proj03" || exit 1; echo x | msl feedback add qux -t t 2>&1)" || true
+has "an ambiguous name is refused, naming both skills" "$out" "proj03/.claude/skills/qux"
+has "(and the other)" "$out" "/.agents/skills/qux"
+check "neither is managed" fails msl status qux
+rm -rf "$HOME/proj03" "$HOME/.agents/skills/qux"
+# Identical copies are one skill, not an ambiguity.
+skill "$HOME/.agents/skills/twin" twin "Same."
+skill "$HOME/.cursor/skills/twin" twin "Same."
+has "identical copies are fine: it's managed, with a note about the copy" "$(echo x | msl feedback add twin -t t)" "is a separate copy of it"
+msl remove twin >/dev/null && rm -rf "$HOME/.agents/skills/twin" "$HOME/.cursor/skills/twin"
+# A user who signs every commit: msl's own repos don't try to.
+git config --global commit.gpgsign true && git config --global tag.gpgsign true && git config --global gpg.program false
+skill "$HOME/.agents/skills/signed" signed "Signed user."
+has "managing works when the user's git signs commits" "$(echo x | msl feedback add signed -t t)" "added signed (local) as v1"
+check "and the version exists" test "$(version_of signed)" = v1
+git config --global --unset commit.gpgsign && git config --global --unset tag.gpgsign && git config --global --unset gpg.program
+msl remove signed >/dev/null && rm -rf "$HOME/.agents/skills/signed"
+
+echo "msl runs from the installed skill"
 hub="$HOME/.agents/skills/meta-skill-loop/scripts/msl"
 sed 's/^MSL_VERSION="[^"]*"/MSL_VERSION="9.9.9"/' "$hub" > "$HOME/x" && mv "$HOME/x" "$hub"
-has "updating the skill updates msl (no stale copy)" "$(msl version)" "9.9.9"
-rm -rf "$HOME/.agents/skills/meta-skill-loop"
-has "launcher falls back to another installed copy" "$(msl version)" "0."
-check "launcher now points at that copy" grep -q '.claude/skills/meta-skill-loop" "' "$HOME/.meta-skill-loop/bin/msl"
-rm -rf "$HOME/.claude/skills/meta-skill-loop"
-has "launcher explains how to reinstall" "$(msl status 2>&1 || true)" "npx skills@latest add SoulEvill/meta-skill-loop --skill meta-skill-loop"
+has "updating the skill is updating msl (no copy to go stale)" "$(msl version)" "9.9.9"
+check "still no launcher" test ! -e "$HOME/.meta-skill-loop/bin"
 
 printf '\n%s passed, %s failed\n' "$pass" "$fail"
 [ "$fail" = 0 ]

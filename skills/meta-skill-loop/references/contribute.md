@@ -1,6 +1,6 @@
 # Send a change upstream
 
-Offer the user's refinements of a skill back to its source, as an issue or a pull request. Do this only because the user asked. Nothing is posted until the user approves the exact text. Run `msl` as SKILL.md says.
+Offer the user's refinements of a skill back to its source, as an issue or a pull request. Do this only because the user asked. Nothing is posted until the user approves the exact text. `msl` is this skill's script, run as SKILL.md says.
 
 ## Steps
 
