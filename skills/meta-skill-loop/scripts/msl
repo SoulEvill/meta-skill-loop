@@ -589,19 +589,29 @@ own_skill() { case "$1" in meta-skill-loop|meta-skill-feedback|meta-skill-refine
 
 # Those two skills survive a reinstall or `npx skills update -g -y`, and their descriptions
 # still offer to log feedback unasked (0.3 stopped that), so wherever msl lists skills it
-# says how to remove each one: -g for a user-level install, the folder for a project's.
+# says how to remove each installation. Notes name the installed entry, never the folder
+# a link points to: a link is removed on its own, and its target is left alone.
 leftover_notes() {
-  local name path out=""
-  while IFS="$TAB" read -r name path; do
-    case "$name" in meta-skill-feedback|meta-skill-refine) ;; *) continue ;; esac
-    if in_user_root "$path"; then
-      out="${out}note: $name ($(tilde "$path")) is left over from meta-skill-loop 0.2, now one skill. Remove it: npx skills@latest remove $name -g$NL"
-    else
-      out="${out}note: $name ($(tilde "$path")) is left over from meta-skill-loop 0.2, now one skill. Delete that folder, or run npx skills@latest remove $name in that project.$NL"
-    fi
-  done <<EOF
-$(all_skills)
+  local n entry phys real out=""
+  for n in meta-skill-feedback meta-skill-refine; do
+    # Real (non-link) installations, to recognize links that merely point at one of them.
+    real="$(install_paths "$n" | while IFS="$TAB" read -r entry phys; do
+      [ -L "$entry" ] || printf '%s\n' "$phys"; done)"
+    while IFS="$TAB" read -r entry phys; do
+      [ -n "$entry" ] || continue
+      if [ -L "$entry" ]; then
+        # The skills CLI's own link to its real folder goes away with that folder's removal.
+        case "$NL$real$NL" in *"$NL$phys$NL"*) continue ;; esac
+        out="${out}note: $n ($(tilde "$entry"), a link to $(tilde "$phys")) is left over from meta-skill-loop 0.2, now one skill. Remove just the link: rm $(tilde "$entry"). $(tilde "$phys") itself is kept.$NL"
+      elif in_user_root "$entry"; then
+        out="${out}note: $n ($(tilde "$entry")) is left over from meta-skill-loop 0.2, now one skill. Remove it: npx skills@latest remove $n -g$NL"
+      else
+        out="${out}note: $n ($(tilde "$entry")) is left over from meta-skill-loop 0.2, now one skill. Delete that folder, or run npx skills@latest remove $n in that project.$NL"
+      fi
+    done <<EOF
+$(install_paths "$n")
 EOF
+  done
   [ -z "$out" ] || printf '\n%s      If you added it, also remove the line mentioning meta-skill-feedback from your agent rules (Cursor User Rules, ~/.claude/CLAUDE.md, ~/.codex/AGENTS.md).\n' "$out"
 }
 
