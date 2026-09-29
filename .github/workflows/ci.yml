@@ -19,7 +19,7 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - name: shellcheck
         run: shellcheck -s bash tests/*.sh tests/agent/*.sh skills/meta-skill-loop/scripts/msl
       - name: skills are portable (Agent Skills format)
@@ -36,7 +36,7 @@ jobs:
             bash: /bin/bash # macOS ships bash 3.2; this is what most Cursor users run
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - run: ${{ matrix.bash }} --version | head -1
       - run: TEST_BASH=${{ matrix.bash }} ${{ matrix.bash }} tests/run.sh
 
@@ -48,5 +48,5 @@ jobs:
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - run: bash tests/package.sh
