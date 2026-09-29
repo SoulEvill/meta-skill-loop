@@ -359,7 +359,8 @@ echo "unrelated" > "$fork/NOTES.md" && git -C "$fork" add -A && gc -C "$fork" co
 # contribute.md's PR steps, minus gh: branch from upstream's default branch, apply, commit.
 git -C "$fork" fetch -q upstream main && git -C "$fork" switch -q -c msl-change upstream/main
 check "the patch applies with the printed command" git -C "$fork" apply --directory=skills/assets "$HOME/change.patch"
-git -C "$fork" add -A && gc -C "$fork" commit -qm "logo first" >/dev/null 2>&1 || true  # the checks below report a failure
+git -C "$fork" add -A
+gc -C "$fork" commit -qm "logo first" >/dev/null 2>&1 || true  # if nothing applied, the checks below report it
 has "the PR branch carries only the change's commit" "$(git -C "$fork" log --oneline upstream/main..HEAD | wc -l | tr -d ' ')" "1"
 lacks "and none of the fork's unrelated files" "$(git -C "$fork" diff --stat upstream/main..HEAD)" "NOTES.md"
 check "the binary file arrives byte for byte" cmp "$HOME/.agents/skills/assets/logo.png" "$fork/skills/assets/logo.png"
